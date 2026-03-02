@@ -1,0 +1,173 @@
+{
+  "id": "topfd",
+  "name": "TopFD",
+  "version": "1.8.0",
+  "description": "TopFD: Deconvolute mass spectra and generate MSAlign files",
+  "executionMode": "native",
+  "command": {
+    "executable": "D:\\Projects\\TDEase-Backend\\toppic-windows-1.8.0\\topfd.exe"
+  },
+  "ports": {
+    "inputs": [
+      {
+        "id": "input_files",
+        "name": "mzML Files",
+        "dataType": "mzml",
+        "required": true,
+        "accept": ["mzml", "mzxml"],
+        "positional": true,
+        "positionalOrder": 0,
+        "pattern": "{sample}.mzML"
+      }
+    ],
+    "outputs": [
+      {
+        "id": "msalign",
+        "name": "MSAlign",
+        "dataType": "msalign",
+        "pattern": "{sample}_ms2.msalign",
+        "handle": "msalign",
+        "provides": ["msalign"]
+      }
+    ]
+  },
+  "parameters": {
+    "activation": {
+      "flag": "-a",
+      "type": "value",
+      "label": "Activation",
+      "description": "Activation type",
+      "group": "basic",
+      "default": "21.0"
+    },
+    "max_charge": {
+      "flag": "-c",
+      "type": "value",
+      "label": "Max Charge",
+      "description": "Maximum charge state",
+      "group": "basic"
+    },
+    "max_mass": {
+      "flag": "-m",
+      "type": "value",
+      "label": "Max Mass",
+      "description": "Maximum mass",
+      "group": "advanced"
+    },
+    "mz_error": {
+      "flag": "-e",
+      "type": "value",
+      "label": "m/z Error",
+      "description": "m/z error tolerance",
+      "group": "advanced"
+    },
+    "ms_one_sn_ratio": {
+      "flag": "-r",
+      "type": "value",
+      "label": "MS1 S/N Ratio",
+      "description": "MS1 signal-to-noise ratio",
+      "group": "advanced"
+    },
+    "ms_two_sn_ratio": {
+      "flag": "-s",
+      "type": "value",
+      "label": "MS2 S/N Ratio",
+      "description": "MS2 signal-to-noise ratio",
+      "group": "advanced"
+    },
+    "missing_level_one": {
+      "flag": "-o",
+      "type": "boolean",
+      "label": "Missing Level One",
+      "description": "Allow missing level one",
+      "group": "advanced",
+      "default": false
+    },
+    "precursor_window": {
+      "flag": "-w",
+      "type": "value",
+      "label": "Precursor Window",
+      "description": "Precursor window",
+      "group": "advanced"
+    },
+    "msdeconv": {
+      "flag": "-n",
+      "type": "boolean",
+      "label": "MS Deconvolution",
+      "description": "Use MS deconvolution",
+      "group": "advanced",
+      "default": false
+    },
+    "env_cnn_cutoff": {
+      "flag": "-v",
+      "type": "value",
+      "label": "Env CNN Cutoff",
+      "description": "Envelope CNN cutoff",
+      "group": "advanced"
+    },
+    "disable_frag_num_filtering": {
+      "flag": "-d",
+      "type": "boolean",
+      "label": "Disable Frag Num Filtering",
+      "description": "Disable fragment number filtering",
+      "group": "advanced",
+      "default": false
+    },
+    "ecscore_cutoff": {
+      "flag": "-t",
+      "type": "value",
+      "label": "ECScore Cutoff",
+      "description": "ECScore cutoff",
+      "group": "advanced"
+    },
+    "min_scan_number": {
+      "flag": "-b",
+      "type": "value",
+      "label": "Min Scan Number",
+      "description": "Minimum scan number",
+      "group": "advanced"
+    },
+    "single_scan_noise": {
+      "flag": "-i",
+      "type": "boolean",
+      "label": "Single Scan Noise",
+      "description": "Use single scan noise",
+      "group": "advanced",
+      "default": false
+    },
+    "disable_additional_feature_search": {
+      "flag": "-f",
+      "type": "boolean",
+      "label": "Disable Additional Feature Search",
+      "description": "Disable additional feature search",
+      "group": "advanced",
+      "default": false
+    },
+    "split_intensity_ratio": {
+      "flag": "-l",
+      "type": "value",
+      "label": "Split Intensity Ratio",
+      "description": "Split intensity ratio",
+      "group": "advanced"
+    },
+    "thread_number": {
+      "flag": "-u",
+      "type": "value",
+      "label": "Thread Number",
+      "description": "Number of threads",
+      "group": "basic",
+      "default": "1"
+    },
+    "skip_html_folder": {
+      "flag": "-g",
+      "type": "boolean",
+      "label": "Skip HTML Folder",
+      "description": "Skip generating HTML folder",
+      "group": "advanced",
+      "default": false
+    }
+  },
+  "output": {
+    "flagSupported": false
+  }
+}

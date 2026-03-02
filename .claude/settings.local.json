@@ -1,0 +1,22 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(toppic:*)",
+      "Bash(topfd:*)",
+      "Bash(openspec:*)",
+      "Bash(python:*)",
+      "Bash(find:*)",
+      "Bash(snakemake:*)",
+      "Bash(python3:*)",
+      "Bash(cat:*)",
+      "Bash(rm:*)",
+      "Bash(cp:*)",
+      "Bash(/tmp/toolbox_extract.py:*)",
+      "Bash(pnpm test:run)",
+      "Bash(pnpm test:run:*)",
+      "Bash(cd:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

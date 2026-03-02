@@ -1,0 +1,245 @@
+{
+  "id": "toppic",
+  "name": "TopPIC",
+  "version": "1.8.0",
+  "description": "TopPIC: Identify proteoforms using MSAlign and FASTA database",
+  "executionMode": "native",
+  "command": {
+    "executable": "D:\\Projects\\TDEase-Backend\\toppic-windows-1.8.0\\toppic.exe"
+  },
+  "ports": {
+    "inputs": [
+      {
+        "id": "msalign_files",
+        "name": "MSAlign Files",
+        "dataType": "msalign",
+        "required": true,
+        "accept": ["msalign"],
+        "positional": true,
+        "positionalOrder": 1
+      },
+      {
+        "id": "fasta_file",
+        "name": "FASTA Database",
+        "dataType": "fasta",
+        "required": true,
+        "accept": ["fasta"],
+        "positional": true,
+        "positionalOrder": 0
+      }
+    ],
+    "outputs": [
+      {
+        "id": "proteoforms",
+        "name": "Proteoforms TSV",
+        "dataType": "tsv",
+        "pattern": "{sample}_proteoforms.tsv",
+        "handle": "proteoforms",
+        "provides": ["tsv", "proteoforms"]
+      }
+    ]
+  },
+  "parameters": {
+    "activation": {
+      "flag": "-a",
+      "type": "value",
+      "label": "Activation",
+      "description": "Activation type",
+      "group": "basic"
+    },
+    "fixed_mod": {
+      "flag": "-f",
+      "type": "value",
+      "label": "Fixed Modification",
+      "description": "Fixed modification",
+      "group": "advanced"
+    },
+    "n_terminal_form": {
+      "flag": "-n",
+      "type": "value",
+      "label": "N-terminal Form",
+      "description": "N-terminal form",
+      "group": "advanced"
+    },
+    "proteoform_type": {
+      "flag": "-R",
+      "type": "value",
+      "label": "Proteoform Type",
+      "description": "Proteoform type",
+      "group": "basic"
+    },
+    "num_shift": {
+      "flag": "-s",
+      "type": "value",
+      "label": "Number of Shifts",
+      "description": "Number of unexpected shifts",
+      "group": "basic"
+    },
+    "min_shift": {
+      "flag": "-m",
+      "type": "value",
+      "label": "Min Shift",
+      "description": "Minimum shift mass",
+      "group": "advanced"
+    },
+    "max_shift": {
+      "flag": "-M",
+      "type": "value",
+      "label": "Max Shift",
+      "description": "Maximum shift mass",
+      "group": "advanced"
+    },
+    "variable_ptm_num": {
+      "flag": "-S",
+      "type": "value",
+      "label": "Variable PTM Number",
+      "description": "Number of variable PTMs",
+      "group": "advanced"
+    },
+    "variable_ptm_file_name": {
+      "flag": "-b",
+      "type": "value",
+      "label": "Variable PTM File",
+      "description": "Variable PTM file name",
+      "group": "advanced"
+    },
+    "decoy": {
+      "flag": "-d",
+      "type": "boolean",
+      "label": "Decoy",
+      "description": "Use decoy database",
+      "group": "advanced",
+      "default": false
+    },
+    "mass_error_tolerance": {
+      "flag": "-e",
+      "type": "value",
+      "label": "Mass Error Tolerance",
+      "description": "Mass error tolerance (e.g., '10ppm')",
+      "group": "basic",
+      "default": "10ppm"
+    },
+    "proteoform_error_tolerance": {
+      "flag": "-p",
+      "type": "value",
+      "label": "Proteoform Error Tolerance",
+      "description": "Proteoform error tolerance",
+      "group": "advanced"
+    },
+    "spectrum_cutoff_type": {
+      "flag": "-t",
+      "type": "value",
+      "label": "Spectrum Cutoff Type",
+      "description": "Spectrum cutoff type",
+      "group": "advanced"
+    },
+    "spectrum_cutoff_value": {
+      "flag": "-v",
+      "type": "value",
+      "label": "Spectrum Cutoff Value",
+      "description": "Spectrum cutoff value",
+      "group": "advanced"
+    },
+    "proteoform_cutoff_type": {
+      "flag": "-T",
+      "type": "value",
+      "label": "Proteoform Cutoff Type",
+      "description": "Proteoform cutoff type",
+      "group": "advanced"
+    },
+    "proteoform_cutoff_value": {
+      "flag": "-V",
+      "type": "value",
+      "label": "Proteoform Cutoff Value",
+      "description": "Proteoform cutoff value",
+      "group": "advanced"
+    },
+    "approximate_spectra": {
+      "flag": "-A",
+      "type": "boolean",
+      "label": "Approximate Spectra",
+      "description": "Use approximate spectra",
+      "group": "advanced",
+      "default": false
+    },
+    "lookup_table": {
+      "flag": "-l",
+      "type": "boolean",
+      "label": "Lookup Table",
+      "description": "Use lookup table",
+      "group": "advanced",
+      "default": false
+    },
+    "local_ptm_file_name": {
+      "flag": "-B",
+      "type": "value",
+      "label": "Local PTM File",
+      "description": "Local PTM file name",
+      "group": "advanced"
+    },
+    "miscore_threshold": {
+      "flag": "-H",
+      "type": "value",
+      "label": "MI Score Threshold",
+      "description": "MI score threshold",
+      "group": "advanced"
+    },
+    "thread_number": {
+      "flag": "-u",
+      "type": "value",
+      "label": "Thread Number",
+      "description": "Number of threads",
+      "group": "basic",
+      "default": "1"
+    },
+    "num_combined_spectra": {
+      "flag": "-r",
+      "type": "value",
+      "label": "Combined Spectra Number",
+      "description": "Number of combined spectra",
+      "group": "advanced"
+    },
+    "combined_file_name": {
+      "flag": "-c",
+      "type": "value",
+      "label": "Combined File Name",
+      "description": "Combined file name",
+      "group": "advanced"
+    },
+    "no_topfd_feature": {
+      "flag": "-x",
+      "type": "boolean",
+      "label": "No TopFD Feature",
+      "description": "Disable TopFD feature",
+      "group": "advanced",
+      "default": false
+    },
+    "keep_temp_files": {
+      "flag": "-k",
+      "type": "boolean",
+      "label": "Keep Temp Files",
+      "description": "Keep temporary files",
+      "group": "advanced",
+      "default": false
+    },
+    "keep_decoy_ids": {
+      "flag": "-K",
+      "type": "boolean",
+      "label": "Keep Decoy IDs",
+      "description": "Keep decoy identifications",
+      "group": "advanced",
+      "default": false
+    },
+    "skip_html_folder": {
+      "flag": "-g",
+      "type": "boolean",
+      "label": "Skip HTML Folder",
+      "description": "Skip generating HTML folder",
+      "group": "advanced",
+      "default": false
+    }
+  },
+  "output": {
+    "flagSupported": false
+  }
+}

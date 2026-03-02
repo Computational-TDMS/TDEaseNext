@@ -1,0 +1,48 @@
+{
+  "id": "fasta_loader",
+  "name": "FASTA Loader",
+  "version": "1.0.0",
+  "description": "Import FASTA database file into the workspace",
+  "executionMode": "script",
+  "command": {
+    "executable": "src/nodes/fasta_loader.py",
+    "interpreter": "python",
+    "useUv": true
+  },
+  "ports": {
+    "inputs": [
+      {
+        "id": "fasta_file",
+        "name": "FASTA File",
+        "dataType": "fasta",
+        "required": true,
+        "accept": ["fasta", "fa"],
+        "positional": false
+      }
+    ],
+    "outputs": [
+      {
+        "id": "output",
+        "name": "Output",
+        "dataType": "fasta",
+        "pattern": "{fasta_filename}.fasta",
+        "handle": "fasta",
+        "provides": ["fasta"]
+      }
+    ]
+  },
+  "parameters": {
+    "fasta_file": {
+      "flag": "--fasta",
+      "type": "value",
+      "label": "FASTA File",
+      "description": "Path to FASTA database file",
+      "group": "basic",
+      "required": true
+    }
+  },
+  "output": {
+    "flagSupported": true,
+    "flag": "--output"
+  }
+}

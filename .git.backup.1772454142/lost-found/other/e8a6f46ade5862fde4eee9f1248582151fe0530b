@@ -1,0 +1,504 @@
+"""
+Cloud Executor
+
+This module implements the CloudExecutor for running jobs on cloud computing platforms
+with job submission, monitoring, and result retrieval.
+"""
+
+import asyncio
+import json
+import time
+from datetime import datetime, timedelta
+from pathlib import Path
+from typing import Dict, Any, List, Optional, Union
+import logging
+
+from .base_executor import BaseExecutor, ExecutionResult
+
+logger = logging.getLogger(__name__)
+
+
+class CloudExecutionError(Exception):
+    """Raised when cloud execution fails"""
+    pass
+
+
+class CloudProviderNotConfiguredError(CloudExecutionError):
+    """Raised when cloud provider is not configured"""
+    pass
+
+
+class CloudJobTimeoutError(CloudExecutionError):
+    """Raised when cloud job times out"""
+    pass
+
+
+class CloudExecutor(BaseExecutor):
+    """Executor for cloud computing platforms"""
+    
+    def __init__(self):
+        super().__init__()
+        self.supported_providers = ['aws', 'gcp', 'azure', 'slurm']
+        self.job_timeout = 3600  # Default 1 hour timeout
+    
+    async def execute(self, node_def, context) -> ExecutionResult:
+        """Execute job on cloud computing platform
+        
+        Args:
+            node_def: NodeDefinition with cloud execution configuration
+            context: TaskContext with execution environment
+            
+        Returns:
+            ExecutionResult with execution outcome
+        """
+        start_time = time.time()
+        
+        try:
+            # Validate cloud configuration
+            context.update_progress(5.0, "Validating cloud configuration")
+            cloud_config = await self._validate_cloud_config(node_def)
+            
+            # Prepare input files for cloud upload
+            context.update_progress(10.0, "Preparing input files")
+            self._prepare_input_files(context, context.input_data)
+            
+            # Upload input files to cloud storage
+            context.update_progress(20.0, "Uploading input files to cloud")
+            cloud_input_path = await self._upload_input_files(cloud_config, context)
+            
+            # Submit job to cloud platform
+            context.update_progress(30.0, "Submitting job to cloud platform")
+            job_id = await self._submit_cloud_job(cloud_config, context, cloud_input_path)
+            
+            # Monitor job execution
+            context.update_progress(35.0, f"Monitoring cloud job: {job_id}")
+            job_result = await self._monitor_cloud_job(cloud_config, job_id, context)
+            
+            # Download results from cloud
+            context.update_progress(85.0, "Downloading results from cloud")
+            await self._download_results(cloud_config, job_result, context)
+            
+            # Calculate execution time
+            execution_time = time.time() - start_time
+            
+            # Collect output files
+            context.update_progress(90.0, "Collecting output files")
+            output_files = self._collect_output_files(context, node_def.outputs)
+            
+            # Cleanup cloud resources
+            context.update_progress(95.0, "Cleaning up cloud resources")
+            await self._cleanup_cloud_resources(cloud_config, job_id, cloud_input_path)
+            
+            # Create execution result
+            context.update_progress(100.0, "Cloud execution completed successfully")
+            result = ExecutionResult(
+                success=True,
+                stdout=job_result.get('stdout', ''),
+                stderr=job_result.get('stderr', ''),
+                output_files=output_files,
+                metadata={
+                    'cloud_provider': cloud_config['provider'],
+                    'job_id': job_id,
+                    'cloud_instance_type': cloud_config.get('instance_type'),
+                    'execution_region': cloud_config.get('region')
+                }
+            )
+            result.execution_time = execution_time
+            return result
+                
+        except Exception as e:
+            self.logger.error(f"Cloud execution failed: {e}")
+            return ExecutionResult(
+                success=False,
+                stderr=str(e),
+                metadata={'error_type': type(e).__name__}
+            )
+    
+    async def validate_config(self, node_def, config: dict) -> bool:
+        """Validate configuration for cloud executor
+        
+        Args:
+            node_def: NodeDefinition object
+            config: Configuration dictionary to validate
+            
+        Returns:
+            True if configuration is valid, False otherwise
+        """
+        try:
+            # Check if cloud configuration is present
+            if not hasattr(node_def, 'cloud_config') or not node_def.cloud_config:
+                self.logger.error("Cloud node must have cloud_config specified")
+                return False
+            
+            cloud_config = node_def.cloud_config
+            
+            # Validate cloud provider
+            provider = cloud_config.get('provider')
+            if not provider or provider not in self.supported_providers:
+                self.logger.error(f"Unsupported cloud provider: {provider}")
+                return False
+            
+            # Validate provider-specific configuration
+            if not await self._validate_provider_config(provider, cloud_config):
+                return False
+            
+            # Check for required parameters
+            for param in node_def.parameters:
+                if param.get("required", False) and param["name"] not in config:
+                    self.logger.error(f"Required parameter '{param['name']}' missing")
+                    return False
+            
+            return True
+            
+        except Exception as e:
+            self.logger.error(f"Configuration validation failed: {e}")
+            return False
+    
+    async def _validate_cloud_config(self, node_def) -> Dict[str, Any]:
+        """Validate and prepare cloud configuration
+        
+        Args:
+            node_def: NodeDefinition with cloud configuration
+            
+        Returns:
+            Validated cloud configuration dictionary
+        """
+        if not hasattr(node_def, 'cloud_config') or not node_def.cloud_config:
+            raise CloudProviderNotConfiguredError("No cloud configuration provided")
+        
+        cloud_config = node_def.cloud_config.copy()
+        provider = cloud_config.get('provider')
+        
+        if provider not in self.supported_providers:
+            raise CloudProviderNotConfiguredError(f"Unsupported provider: {provider}")
+        
+        # Set defaults based on provider
+        if provider == 'aws':
+            cloud_config.setdefault('region', 'us-east-1')
+            cloud_config.setdefault('instance_type', 't3.medium')
+        elif provider == 'gcp':
+            cloud_config.setdefault('zone', 'us-central1-a')
+            cloud_config.setdefault('machine_type', 'n1-standard-1')
+        elif provider == 'azure':
+            cloud_config.setdefault('location', 'East US')
+            cloud_config.setdefault('vm_size', 'Standard_B2s')
+        elif provider == 'slurm':
+            cloud_config.setdefault('partition', 'compute')
+            cloud_config.setdefault('nodes', 1)
+            cloud_config.setdefault('cpus_per_task', 1)
+        
+        return cloud_config
+    
+    async def _validate_provider_config(self, provider: str, config: Dict[str, Any]) -> bool:
+        """Validate provider-specific configuration
+        
+        Args:
+            provider: Cloud provider name
+            config: Provider configuration
+            
+        Returns:
+            True if configuration is valid
+        """
+        if provider == 'aws':
+            required_fields = ['access_key_id', 'secret_access_key', 's3_bucket']
+            for field in required_fields:
+                if field not in config:
+                    self.logger.error(f"AWS configuration missing required field: {field}")
+                    return False
+        
+        elif provider == 'gcp':
+            required_fields = ['project_id', 'service_account_key', 'storage_bucket']
+            for field in required_fields:
+                if field not in config:
+                    self.logger.error(f"GCP configuration missing required field: {field}")
+                    return False
+        
+        elif provider == 'azure':
+            required_fields = ['subscription_id', 'client_id', 'client_secret', 'storage_account']
+            for field in required_fields:
+                if field not in config:
+                    self.logger.error(f"Azure configuration missing required field: {field}")
+                    return False
+        
+        elif provider == 'slurm':
+            required_fields = ['host', 'username']
+            for field in required_fields:
+                if field not in config:
+                    self.logger.error(f"SLURM configuration missing required field: {field}")
+                    return False
+        
+        return True
+    
+    async def _upload_input_files(self, cloud_config: Dict[str, Any], context) -> str:
+        """Upload input files to cloud storage
+        
+        Args:
+            cloud_config: Cloud provider configuration
+            context: TaskContext with input files
+            
+        Returns:
+            Cloud storage path for input files
+        """
+        provider = cloud_config['provider']
+        input_dir = context.working_dir / 'input'
+        
+        if not input_dir.exists() or not any(input_dir.iterdir()):
+            self.logger.info("No input files to upload")
+            return ""
+        
+        try:
+            if provider == 'aws':
+                return await self._upload_to_s3(cloud_config, input_dir, context.task_id)
+            elif provider == 'gcp':
+                return await self._upload_to_gcs(cloud_config, input_dir, context.task_id)
+            elif provider == 'azure':
+                return await self._upload_to_azure_blob(cloud_config, input_dir, context.task_id)
+            elif provider == 'slurm':
+                return await self._upload_to_slurm(cloud_config, input_dir, context.task_id)
+            else:
+                raise CloudExecutionError(f"Upload not implemented for provider: {provider}")
+                
+        except Exception as e:
+            raise CloudExecutionError(f"Failed to upload input files: {e}")
+    
+    async def _submit_cloud_job(self, cloud_config: Dict[str, Any], context, 
+                              cloud_input_path: str) -> str:
+        """Submit job to cloud platform
+        
+        Args:
+            cloud_config: Cloud provider configuration
+            context: TaskContext with job configuration
+            cloud_input_path: Path to input files in cloud storage
+            
+        Returns:
+            Job ID for monitoring
+        """
+        provider = cloud_config['provider']
+        
+        try:
+            if provider == 'aws':
+                return await self._submit_aws_batch_job(cloud_config, context, cloud_input_path)
+            elif provider == 'gcp':
+                return await self._submit_gcp_job(cloud_config, context, cloud_input_path)
+            elif provider == 'azure':
+                return await self._submit_azure_batch_job(cloud_config, context, cloud_input_path)
+            elif provider == 'slurm':
+                return await self._submit_slurm_job(cloud_config, context, cloud_input_path)
+            else:
+                raise CloudExecutionError(f"Job submission not implemented for provider: {provider}")
+                
+        except Exception as e:
+            raise CloudExecutionError(f"Failed to submit cloud job: {e}")
+    
+    async def _monitor_cloud_job(self, cloud_config: Dict[str, Any], job_id: str, 
+                               context) -> Dict[str, Any]:
+        """Monitor cloud job execution
+        
+        Args:
+            cloud_config: Cloud provider configuration
+            job_id: Job ID to monitor
+            context: TaskContext for progress updates
+            
+        Returns:
+            Job result dictionary
+        """
+        provider = cloud_config['provider']
+        start_time = time.time()
+        timeout = cloud_config.get('timeout', self.job_timeout)
+        
+        self.logger.info(f"Monitoring {provider} job: {job_id}")
+        
+        while True:
+            try:
+                # Check job status
+                if provider == 'aws':
+                    status = await self._check_aws_job_status(cloud_config, job_id)
+                elif provider == 'gcp':
+                    status = await self._check_gcp_job_status(cloud_config, job_id)
+                elif provider == 'azure':
+                    status = await self._check_azure_job_status(cloud_config, job_id)
+                elif provider == 'slurm':
+                    status = await self._check_slurm_job_status(cloud_config, job_id)
+                else:
+                    raise CloudExecutionError(f"Job monitoring not implemented for provider: {provider}")
+                
+                # Update progress based on job status
+                if status['state'] == 'RUNNING':
+                    elapsed = time.time() - start_time
+                    progress = min(80.0, 35.0 + (elapsed / timeout) * 45.0)
+                    context.update_progress(progress, f"Job running for {elapsed:.0f}s")
+                elif status['state'] == 'SUCCEEDED':
+                    context.update_progress(80.0, "Job completed successfully")
+                    return status
+                elif status['state'] == 'FAILED':
+                    error_msg = status.get('error', 'Job failed with unknown error')
+                    raise CloudExecutionError(f"Cloud job failed: {error_msg}")
+                
+                # Check timeout
+                if time.time() - start_time > timeout:
+                    raise CloudJobTimeoutError(f"Job {job_id} timed out after {timeout}s")
+                
+                # Wait before next check
+                await asyncio.sleep(10)
+                
+            except Exception as e:
+                if isinstance(e, (CloudExecutionError, CloudJobTimeoutError)):
+                    raise
+                self.logger.error(f"Error monitoring job {job_id}: {e}")
+                await asyncio.sleep(5)
+    
+    async def _download_results(self, cloud_config: Dict[str, Any], job_result: Dict[str, Any], 
+                              context):
+        """Download job results from cloud storage
+        
+        Args:
+            cloud_config: Cloud provider configuration
+            job_result: Job result information
+            context: TaskContext for output directory
+        """
+        provider = cloud_config['provider']
+        output_dir = context.working_dir / 'output'
+        output_dir.mkdir(exist_ok=True)
+        
+        try:
+            if provider == 'aws':
+                await self._download_from_s3(cloud_config, job_result, output_dir)
+            elif provider == 'gcp':
+                await self._download_from_gcs(cloud_config, job_result, output_dir)
+            elif provider == 'azure':
+                await self._download_from_azure_blob(cloud_config, job_result, output_dir)
+            elif provider == 'slurm':
+                await self._download_from_slurm(cloud_config, job_result, output_dir)
+            else:
+                raise CloudExecutionError(f"Download not implemented for provider: {provider}")
+                
+        except Exception as e:
+            raise CloudExecutionError(f"Failed to download results: {e}")
+    
+    async def _cleanup_cloud_resources(self, cloud_config: Dict[str, Any], job_id: str, 
+                                     cloud_input_path: str):
+        """Cleanup cloud resources after job completion
+        
+        Args:
+            cloud_config: Cloud provider configuration
+            job_id: Job ID to cleanup
+            cloud_input_path: Input files path to cleanup
+        """
+        provider = cloud_config['provider']
+        
+        try:
+            if provider == 'aws':
+                await self._cleanup_aws_resources(cloud_config, job_id, cloud_input_path)
+            elif provider == 'gcp':
+                await self._cleanup_gcp_resources(cloud_config, job_id, cloud_input_path)
+            elif provider == 'azure':
+                await self._cleanup_azure_resources(cloud_config, job_id, cloud_input_path)
+            elif provider == 'slurm':
+                await self._cleanup_slurm_resources(cloud_config, job_id, cloud_input_path)
+            
+            self.logger.info(f"Cleaned up cloud resources for job {job_id}")
+            
+        except Exception as e:
+            self.logger.warning(f"Failed to cleanup cloud resources: {e}")
+    
+    # Provider-specific implementation stubs
+    # These would be implemented with actual cloud provider SDKs
+    
+    async def _upload_to_s3(self, config: Dict[str, Any], input_dir: Path, task_id: str) -> str:
+        """Upload files to AWS S3 (stub implementation)"""
+        # TODO: Implement with boto3
+        self.logger.info(f"Uploading to S3 bucket: {config['s3_bucket']}")
+        return f"s3://{config['s3_bucket']}/tasks/{task_id}/input/"
+    
+    async def _submit_aws_batch_job(self, config: Dict[str, Any], context, input_path: str) -> str:
+        """Submit job to AWS Batch (stub implementation)"""
+        # TODO: Implement with boto3
+        job_id = f"tdease-{context.task_id}"
+        self.logger.info(f"Submitted AWS Batch job: {job_id}")
+        return job_id
+    
+    async def _check_aws_job_status(self, config: Dict[str, Any], job_id: str) -> Dict[str, Any]:
+        """Check AWS Batch job status (stub implementation)"""
+        # TODO: Implement with boto3
+        return {'state': 'SUCCEEDED', 'stdout': '', 'stderr': ''}
+    
+    async def _download_from_s3(self, config: Dict[str, Any], job_result: Dict[str, Any], 
+                              output_dir: Path):
+        """Download results from S3 (stub implementation)"""
+        # TODO: Implement with boto3
+        self.logger.info(f"Downloading results from S3 to {output_dir}")
+    
+    async def _cleanup_aws_resources(self, config: Dict[str, Any], job_id: str, input_path: str):
+        """Cleanup AWS resources (stub implementation)"""
+        # TODO: Implement with boto3
+        self.logger.info(f"Cleaning up AWS resources for job {job_id}")
+    
+    # Similar stub implementations for GCP, Azure, and SLURM would go here
+    # Each would use the appropriate SDK/client library
+    
+    async def _upload_to_gcs(self, config: Dict[str, Any], input_dir: Path, task_id: str) -> str:
+        """Upload files to Google Cloud Storage (stub implementation)"""
+        self.logger.info(f"Uploading to GCS bucket: {config['storage_bucket']}")
+        return f"gs://{config['storage_bucket']}/tasks/{task_id}/input/"
+    
+    async def _submit_gcp_job(self, config: Dict[str, Any], context, input_path: str) -> str:
+        """Submit job to Google Cloud (stub implementation)"""
+        job_id = f"tdease-{context.task_id}"
+        self.logger.info(f"Submitted GCP job: {job_id}")
+        return job_id
+    
+    async def _check_gcp_job_status(self, config: Dict[str, Any], job_id: str) -> Dict[str, Any]:
+        """Check GCP job status (stub implementation)"""
+        return {'state': 'SUCCEEDED', 'stdout': '', 'stderr': ''}
+    
+    async def _download_from_gcs(self, config: Dict[str, Any], job_result: Dict[str, Any], 
+                               output_dir: Path):
+        """Download results from GCS (stub implementation)"""
+        self.logger.info(f"Downloading results from GCS to {output_dir}")
+    
+    async def _cleanup_gcp_resources(self, config: Dict[str, Any], job_id: str, input_path: str):
+        """Cleanup GCP resources (stub implementation)"""
+        self.logger.info(f"Cleaning up GCP resources for job {job_id}")
+    
+    # Azure and SLURM implementations would follow similar patterns
+    async def _upload_to_azure_blob(self, config: Dict[str, Any], input_dir: Path, task_id: str) -> str:
+        """Upload files to Azure Blob Storage (stub implementation)"""
+        return f"https://{config['storage_account']}.blob.core.windows.net/tasks/{task_id}/input/"
+    
+    async def _submit_azure_batch_job(self, config: Dict[str, Any], context, input_path: str) -> str:
+        """Submit job to Azure Batch (stub implementation)"""
+        return f"tdease-{context.task_id}"
+    
+    async def _check_azure_job_status(self, config: Dict[str, Any], job_id: str) -> Dict[str, Any]:
+        """Check Azure Batch job status (stub implementation)"""
+        return {'state': 'SUCCEEDED', 'stdout': '', 'stderr': ''}
+    
+    async def _download_from_azure_blob(self, config: Dict[str, Any], job_result: Dict[str, Any], 
+                                      output_dir: Path):
+        """Download results from Azure Blob (stub implementation)"""
+        self.logger.info(f"Downloading results from Azure Blob to {output_dir}")
+    
+    async def _cleanup_azure_resources(self, config: Dict[str, Any], job_id: str, input_path: str):
+        """Cleanup Azure resources (stub implementation)"""
+        self.logger.info(f"Cleaning up Azure resources for job {job_id}")
+    
+    async def _upload_to_slurm(self, config: Dict[str, Any], input_dir: Path, task_id: str) -> str:
+        """Upload files to SLURM cluster (stub implementation)"""
+        return f"/shared/tasks/{task_id}/input/"
+    
+    async def _submit_slurm_job(self, config: Dict[str, Any], context, input_path: str) -> str:
+        """Submit job to SLURM (stub implementation)"""
+        return f"slurm-{context.task_id}"
+    
+    async def _check_slurm_job_status(self, config: Dict[str, Any], job_id: str) -> Dict[str, Any]:
+        """Check SLURM job status (stub implementation)"""
+        return {'state': 'SUCCEEDED', 'stdout': '', 'stderr': ''}
+    
+    async def _download_from_slurm(self, config: Dict[str, Any], job_result: Dict[str, Any], 
+                                 output_dir: Path):
+        """Download results from SLURM cluster (stub implementation)"""
+        self.logger.info(f"Downloading results from SLURM to {output_dir}")
+    
+    async def _cleanup_slurm_resources(self, config: Dict[str, Any], job_id: str, input_path: str):
+        """Cleanup SLURM resources (stub implementation)"""
+        self.logger.info(f"Cleaning up SLURM resources for job {job_id}")

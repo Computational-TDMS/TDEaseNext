@@ -1,0 +1,37 @@
+{
+  "informed_mspathfindert": {
+    "tool_type": "command",
+    "tool_path": "mono /home/ray/TDEase-Backend/InformedProteomics_Program/MSPathFinderT.exe",
+    "input_params": ["input_files"],
+    "output_patterns": [
+      {"pattern": "{input_basename}_IcTda.tsv", "handle": "prsm_tsv"}
+    ],
+    "output_flag": "-o",
+    "output_flag_supported": true,
+    "input_flag": "-s",
+    "param_mapping": {
+      "fasta_file": {"flag": "-d", "type": "value"},
+      "tda": {"flag": "-tda", "type": "value"},
+      "t": {"flag": "-t", "type": "value"},
+      "f": {"flag": "-f", "type": "value"},
+      "min_length": {"flag": "-MinLength", "type": "value"},
+      "max_length": {"flag": "-MaxLength", "type": "value"},
+      "min_charge": {"flag": "-MinCharge", "type": "value"},
+      "max_charge": {"flag": "-MaxCharge", "type": "value"},
+      "min_frag_charge": {"flag": "-MinFragCharge", "type": "value"},
+      "max_frag_charge": {"flag": "-MaxFragCharge", "type": "value"},
+      "min_mass": {"flag": "-MinMass", "type": "value"},
+      "max_mass": {"flag": "-MaxMass", "type": "value"},
+      "feature_file": {"flag": "-Feature", "type": "value"},
+      "threads": {"flag": "-threads", "type": "value"},
+      "act": {"flag": "-act", "type": "value"},
+      "scans_file": {"flag": "-ScansFile", "type": "value"},
+      "flip": {"flag": "-flip", "type": "boolean"},
+      "mod_file": {"flag": "-mod", "type": "value"},
+      "param_file": {"flag": "-ParamFile", "type": "value"}
+    },
+    "conda_env": null,
+    "execution_mode": "native",
+    "description": "InformedProteomics MSPathFinderT"
+  }
+}

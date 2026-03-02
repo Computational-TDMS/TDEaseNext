@@ -1,0 +1,141 @@
+# 工作流数据模型
+from pydantic import BaseModel, Field
+from typing import Dict, List, Any, Optional, Union
+from datetime import datetime
+from enum import Enum
+import uuid
+
+class NodeStatus(str, Enum):
+    IDLE = "idle"
+    RUNNING = "running" 
+    COMPLETED = "completed"
+    ERROR = "error"
+    PAUSED = "paused"
+
+class DataType(str, Enum):
+    FILE = "file"
+    DATA = "data"
+    VISUALIZATION = "visualization"
+    SELECTION = "selection"
+    CONFIG = "config"
+
+class NodePort(BaseModel):
+    id: str
+    name: str
+    data_type: DataType
+    required: bool = False
+    description: str = ""
+    schema: Optional[Dict[str, Any]] = None
+
+class NodeDefinition(BaseModel):
+    """节点类型定义 - 配置驱动"""
+    id: str
+    name: str
+    category: str
+    version: str = "1.0.0"
+    description: str = ""
+    icon: str = "default"
+    
+    # 端口定义
+    inputs: List[NodePort] = []
+    outputs: List[NodePort] = []
+    
+    # 配置模式
+    config_schema: Dict[str, Any] = {}
+    default_config: Dict[str, Any] = {}
+    
+    # 执行配置
+    executor: str  # "python", "command", "builtin"
+    executor_config: Dict[str, Any] = {}
+    
+    # UI配置
+    ui_component: Optional[str] = None
+    ui_config: Dict[str, Any] = {}
+
+class NodeInstance(BaseModel):
+    """工作流中的节点实例"""
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    node_type_id: str
+    name: str
+    position: Dict[str, float] = {"x": 0, "y": 0}
+    
+    # 运行时状态
+    status: NodeStatus = NodeStatus.IDLE
+    config: Dict[str, Any] = {}
+    
+    # 数据状态
+    input_data: Dict[str, Any] = {}
+    output_data: Dict[str, Any] = {}
+    
+    # 执行信息
+    execution_info: Optional[Dict[str, Any]] = None
+    error_message: Optional[str] = None
+    
+    # 时间戳
+    created_at: datetime = Field(default_factory=datetime.now)
+    updated_at: datetime = Field(default_factory=datetime.now)
+
+class WorkflowEdge(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    source_node_id: str
+    source_port_id: str
+    target_node_id: str
+    target_port_id: str
+    
+    # 数据传输配置
+    data_transform: Optional[Dict[str, Any]] = None
+    enabled: bool = True
+
+class WorkflowDefinition(BaseModel):
+    """工作流定义 - 可导入导出"""
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    name: str
+    description: str = ""
+    version: str = "1.0.0"
+    
+    # 工作流结构
+    nodes: List[NodeInstance] = []
+    edges: List[WorkflowEdge] = []
+    
+    # 全局配置
+    global_config: Dict[str, Any] = {}
+    
+    # 元数据
+    metadata: Dict[str, Any] = {}
+    tags: List[str] = []
+    
+    # 时间戳
+    created_at: datetime = Field(default_factory=datetime.now)
+    updated_at: datetime = Field(default_factory=datetime.now)
+    
+    def to_file(self) -> Dict[str, Any]:
+        """导出为文件格式"""
+        return self.dict()
+    
+    @classmethod
+    def from_file(cls, data: Dict[str, Any]) -> "WorkflowDefinition":
+        """从文件导入"""
+        return cls(**data)
+
+class ExecutionContext(BaseModel):
+    """执行上下文"""
+    workflow_id: str
+    execution_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    
+    # 执行状态
+    status: str = "idle"  # idle, running, completed, error, paused
+    current_nodes: List[str] = []
+    completed_nodes: List[str] = []
+    failed_nodes: List[str] = []
+    
+    # 全局数据
+    global_data: Dict[str, Any] = {}
+    temp_files: List[str] = []
+    
+    # 执行配置
+    parallel_execution: bool = True
+    max_retries: int = 3
+    
+    # 时间信息
+    started_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None

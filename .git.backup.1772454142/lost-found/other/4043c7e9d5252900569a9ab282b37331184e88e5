@@ -1,0 +1,52 @@
+app:
+  name: "TDEase"
+  version: "1.0.0"
+  host: "0.0.0.0"
+  port: 8000
+  debug: false
+  reload: true
+
+database:
+  type: "sqlite"
+  path: "data/tdease.db"
+  pool_size: 5
+  max_overflow: 10
+
+workflows:
+  base_dir: "data/workflows"
+  max_concurrent: 5
+  default_cores: 4
+  cleanup_old_days: 30
+
+logging:
+  level: "INFO"
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  file: "logs/app.log"
+  max_size: "10MB"
+  backup_count: 5
+
+cors:
+  origins:
+    - "http://localhost:3000"
+    - "http://127.0.0.1:3000"
+    - "http://localhost:8080"
+  allow_credentials: true
+  allow_methods: ["*"]
+  allow_headers: ["*"]
+
+file_uploads:
+  max_size: 100MB
+  allowed_extensions: [".mzml", ".fasta", ".raw", ".json", ".txt"]
+  chunk_size: 8192
+
+tools:
+  discovery_timeout: 30
+  validation_timeout: 10
+  cache_duration: 3600  # seconds
+
+security:
+  trusted_hosts: ["localhost", "127.0.0.1", "*.local"]
+  max_request_size: 50MB
+  rate_limit:
+    enabled: false
+    requests_per_minute: 100

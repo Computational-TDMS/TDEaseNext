@@ -1,0 +1,28 @@
+{
+  "id": "tool_a",
+  "name": "Tool A (Mock)",
+  "version": "1.0.0",
+  "description": "Mock tool A: 无输入，输出 {sample}_a.txt",
+  "executionMode": "script",
+  "command": {
+    "executable": "tests/fixtures/tools/tool_a.py",
+    "interpreter": "python"
+  },
+  "ports": {
+    "inputs": [],
+    "outputs": [
+      {
+        "id": "output",
+        "name": "Output",
+        "dataType": "txt",
+        "pattern": "{sample}_a.txt",
+        "handle": "output"
+      }
+    ]
+  },
+  "parameters": {},
+  "output": {
+    "flagSupported": true,
+    "flag": "-o"
+  }
+}

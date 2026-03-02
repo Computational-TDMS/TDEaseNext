@@ -1,0 +1,6 @@
+<?xml version="1.0"?>
+<toolbox>
+    <!-- 自动发现 src/nodes 目录中的所有工具 -->
+    <!-- recursive="true" 表示递归扫描子目录 -->
+    <tooldir dir="src/nodes" recursive="true"/>
+</toolbox>

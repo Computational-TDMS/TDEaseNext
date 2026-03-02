@@ -1,0 +1,57 @@
+{
+  "metadata": {
+    "id": "wf_abc_minimal",
+    "name": "ABC Minimal (no data_loader)",
+    "description": "Pure A -> B -> C chain, no file input"
+  },
+  "format_version": "2.0",
+  "nodes": [
+    {
+      "id": "node_a",
+      "type": "tool",
+      "position": {"x": 0, "y": 100},
+      "data": {
+        "label": "Tool A",
+        "type": "tool_a",
+        "params": {}
+      }
+    },
+    {
+      "id": "node_b",
+      "type": "tool",
+      "position": {"x": 250, "y": 100},
+      "data": {
+        "label": "Tool B",
+        "type": "tool_b",
+        "params": {}
+      }
+    },
+    {
+      "id": "node_c",
+      "type": "tool",
+      "position": {"x": 500, "y": 100},
+      "data": {
+        "label": "Tool C",
+        "type": "tool_c",
+        "params": {}
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "e_ab",
+      "source": "node_a",
+      "target": "node_b",
+      "sourceHandle": "output-output",
+      "targetHandle": "input-txt_files"
+    },
+    {
+      "id": "e_bc",
+      "source": "node_b",
+      "target": "node_c",
+      "sourceHandle": "output-output",
+      "targetHandle": "input-txt_files"
+    }
+  ],
+  "projectSettings": {}
+}

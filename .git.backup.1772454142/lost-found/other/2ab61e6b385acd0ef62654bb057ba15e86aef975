@@ -1,0 +1,177 @@
+# 工作流文件管理常见问题
+
+## 📋 问题解答
+
+### 1. Snakemake 文件是临时文件还是持久化保存？
+
+**答案：持久化保存到项目文件夹**
+
+#### ✅ 推荐方案
+
+生成的 `Snakefile` 和 `config.yaml` **应该持久化保存**在项目目录下：
+
+```
+backend/
+└── data/
+    └── workflows/
+        └── {workflow_id}/      # 每个工作流一个目录
+            ├── Snakefile       # ✅ 持久化保存
+            ├── config.yaml      # ✅ 持久化保存
+            ├── logs/           # 执行日志
+            └── results/        # 输出结果
+```
+
+#### 为什么持久化保存？
+
+1. **可追溯性**：保存工作流定义，便于版本控制和审计
+2. **可重复执行**：可以重新运行相同的工作流
+3. **调试方便**：可以直接查看和修改生成的文件
+4. **增量执行**：Snakemake 自动检测文件变更，只执行需要更新的部分
+
+#### 临时文件说明
+
+Snakemake 执行过程中会产生临时文件（如果规则中使用了 `temp()` 函数），这些会在执行完成后自动删除。但工作流定义文件（Snakefile、config.yaml）应该保留。
+
+---
+
+### 2. 是否使用项目自己的 Conda 环境？
+
+**答案：是的，使用项目自己的 Conda 环境**
+
+#### ✅ 推荐方案
+
+在项目根目录下创建 `envs/` 目录，存放 Conda 环境定义文件：
+
+```
+backend/
+├── envs/                       # Conda 环境定义文件
+│   ├── openms.yaml            # OpenMS 工具环境
+│   ├── massql.yaml            # MassQL 查询环境
+│   └── default.yaml           # 默认环境
+└── data/
+    └── workflows/
+        └── {workflow_id}/
+            └── Snakefile      # 引用 envs/ 中的环境
+```
+
+#### 环境定义文件示例
+
+**`envs/openms.yaml`**:
+```yaml
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  - openms=3.0.0
+  - python=3.9
+```
+
+#### 在 Snakefile 中使用
+
+```python
+rule peakPicker:
+    conda: "envs/openms.yaml"  # 相对路径，相对于工作目录
+    shell: "PeakPickerHiRes {input} {output}"
+```
+
+#### 执行命令
+
+```bash
+cd data/workflows/{workflow_id}
+snakemake \
+    --use-conda \
+    --conda-frontend conda \
+    --conda-prefix .snakemake/conda \
+    --cores 4
+```
+
+**注意**：`envs/` 目录应该在项目根目录，Snakemake 会从工作目录向上查找，或使用绝对路径。
+
+---
+
+### 3. config.yaml 是否支持修改节点架构？
+
+**答案：不支持。config.yaml 只能调整参数，不能修改节点架构**
+
+#### ✅ config.yaml 可以做什么
+
+1. **调整参数值**：
+   ```yaml
+   nodes:
+     peakPicker_1:
+       config:
+         mass_tolerance: 10.0  # ✅ 可以修改
+         intensity_threshold: 1000.0  # ✅ 可以修改
+   ```
+
+2. **修改文件路径**：
+   ```yaml
+   nodes:
+     dataLoader_1:
+       config:
+         file_path: "./data/new_input.mzML"  # ✅ 可以修改
+   ```
+
+3. **调整资源需求**：
+   ```yaml
+   nodes:
+     peakPicker_1:
+       config:
+         threads: 8  # ✅ 可以修改
+         memory_mb: 4000  # ✅ 可以修改
+   ```
+
+#### ❌ config.yaml 不能做什么
+
+1. **不能添加新节点**：新节点必须在 Snakefile 中定义
+2. **不能删除节点**：删除节点需要重新生成 Snakefile
+3. **不能修改依赖关系**：依赖关系在 Snakefile 中已固定
+4. **不能修改节点类型**：节点类型在 Snakefile 中已固定
+
+#### 🔄 如何修改节点架构？
+
+如果需要修改节点架构（添加/删除节点、修改依赖关系），必须：
+
+1. **重新编译工作流**：
+   - 前端发送新的 VueFlow JSON
+   - 后端调用 `VueFlowCompiler.compile_workflow()`
+   - 生成新的 `Snakefile` 和 `config.yaml`
+
+2. **版本管理**：
+   - 每次编译生成新的 `workflow_id`
+   - 保留历史版本用于回滚
+
+#### 💡 最佳实践
+
+- **参数调整**：使用 `config.yaml` 或命令行参数
+  ```bash
+  snakemake --config nodes.peakPicker_1.config.mass_tolerance=15.0
+  ```
+
+- **架构修改**：重新编译生成新的工作流版本
+
+- **混合方案**：
+  - `config.yaml` 存储**可调整的参数**
+  - `Snakefile` 定义**固定的架构**
+  - 通过重新编译来**更新架构**
+
+---
+
+## 🎯 总结
+
+| 问题 | 答案 |
+|------|------|
+| 文件存储方式 | 持久化保存到 `data/workflows/{workflow_id}/` |
+| Conda 环境 | 使用项目根目录的 `envs/` 目录 |
+| config.yaml 功能 | 只能调整参数，不能修改节点架构 |
+| 架构修改方法 | 重新编译生成新的工作流版本 |
+
+---
+
+## 📚 相关文档
+
+- [工作流文件管理详细说明](WORKFLOW_FILE_MANAGEMENT.md)
+- [Snakemake 实现指南](SNAKEMAKE_GUIDE.md)
+- [系统架构文档](ARCHITECTURE.md)
+
+

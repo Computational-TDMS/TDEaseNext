@@ -1,0 +1,567 @@
+"""
+Monitoring API Endpoints
+
+This module provides REST API endpoints for system monitoring, performance metrics,
+and maintenance operations.
+"""
+
+from fastapi import APIRouter, HTTPException, Depends, BackgroundTasks
+from typing import Dict, List, Optional, Any
+from datetime import datetime
+import logging
+
+from app.services.monitoring import (
+    MonitoringService,
+    get_monitoring_service,
+    SystemMetrics,
+    TaskMetrics,
+    EnvironmentMetrics
+)
+
+logger = logging.getLogger(__name__)
+
+router = APIRouter(prefix="/monitoring", tags=["Monitoring"])
+
+
+@router.get("/status")
+async def get_system_status(
+    monitoring_service: MonitoringService = Depends(get_monitoring_service)
+):
+    """
+    Get comprehensive system status
+    
+    Returns current system resource usage, task performance metrics,
+    environment status, and maintenance scheduler information.
+    """
+    try:
+        status = monitoring_service.get_comprehensive_status()
+        return {
+            "success": True,
+            "data": status
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to get system status: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to get system status: {str(e)}"
+        )
+
+
+@router.get("/resources")
+async def get_resource_metrics(
+    hours: int = 1,
+    monitoring_service: MonitoringService = Depends(get_monitoring_service)
+):
+    """
+    Get system resource metrics
+    
+    Returns CPU, memory, disk, and network usage metrics for the specified
+    time period.
+    """
+    try:
+        if hours < 1 or hours > 168:  # Max 1 week
+            raise HTTPException(
+                status_code=400,
+                detail="Hours must be between 1 and 168 (1 week)"
+            )
+        
+        current_metrics = monitoring_service.resource_monitor.get_current_metrics()
+        history = monitoring_service.resource_monitor.get_metrics_history(hours)
+        summary = monitoring_service.resource_monitor.get_resource_summary()
+        
+        return {
+            "success": True,
+            "data": {
+                "current": current_metrics.__dict__ if current_metrics else None,
+                "history": [m.__dict__ for m in history],
+                "summary": summary,
+                "time_period_hours": hours
+            }
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get resource metrics: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to get resource metrics: {str(e)}"
+        )
+
+
+@router.get("/performance")
+async def get_performance_metrics(
+    hours: int = 24,
+    monitoring_service: MonitoringService = Depends(get_monitoring_service)
+):
+    """
+    Get task performance metrics
+    
+    Returns task execution statistics, success rates, and performance
+    trends for the specified time period.
+    """
+    try:
+        if hours < 1 or hours > 168:  # Max 1 week
+            raise HTTPException(
+                status_code=400,
+                detail="Hours must be between 1 and 168 (1 week)"
+            )
+        
+        performance_summary = monitoring_service.task_tracker.get_performance_summary(hours)
+        
+        return {
+            "success": True,
+            "data": performance_summary
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get performance metrics: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to get performance metrics: {str(e)}"
+        )
+
+
+@router.get("/environments")
+async def get_environment_status(
+    monitoring_service: MonitoringService = Depends(get_monitoring_service)
+):
+    """
+    Get UV environment status
+    
+    Returns information about all UV environments including size,
+    usage, and age statistics.
+    """
+    try:
+        environments = monitoring_service.environment_manager.scan_environments()
+        summary = monitoring_service.environment_manager.get_environment_summary()
+        
+        return {
+            "success": True,
+            "data": {
+                "environments": [env.__dict__ for env in environments],
+                "summary": summary
+            }
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to get environment status: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to get environment status: {str(e)}"
+        )
+
+
+@router.post("/environments/cleanup")
+async def cleanup_environments(
+    max_age_days: int = 30,
+    max_size_gb: Optional[float] = None,
+    background_tasks: BackgroundTasks,
+    monitoring_service: MonitoringService = Depends(get_monitoring_service)
+):
+    """
+    Clean up old UV environments
+    
+    Removes environments that haven't been used for the specified number
+    of days or when total size exceeds the limit.
+    """
+    try:
+        if max_age_days < 1 or max_age_days > 365:
+            raise HTTPException(
+                status_code=400,
+                detail="max_age_days must be between 1 and 365"
+            )
+        
+        if max_size_gb is not None and (max_size_gb < 0.1 or max_size_gb > 1000):
+            raise HTTPException(
+                status_code=400,
+                detail="max_size_gb must be between 0.1 and 1000"
+            )
+        
+        # Run cleanup in background
+        def run_cleanup():
+            try:
+                result = monitoring_service.environment_manager.cleanup_old_environments(
+                    max_age_days=max_age_days,
+                    max_size_gb=max_size_gb
+                )
+                logger.info(f"Environment cleanup completed: {result}")
+                return result
+            except Exception as e:
+                logger.error(f"Environment cleanup failed: {e}")
+                return {"error": str(e)}
+        
+        background_tasks.add_task(run_cleanup)
+        
+        return {
+            "success": True,
+            "message": "Environment cleanup started",
+            "parameters": {
+                "max_age_days": max_age_days,
+                "max_size_gb": max_size_gb
+            }
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to start environment cleanup: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to start environment cleanup: {str(e)}"
+        )
+
+
+@router.get("/health")
+async def get_health_status(
+    check: Optional[str] = None,
+    monitoring_service: MonitoringService = Depends(get_monitoring_service)
+):
+    """
+    Get system health status
+    
+    Runs health checks for database, disk space, memory, CPU, environments,
+    and services. Can run all checks or a specific check.
+    """
+    try:
+        health_result = await monitoring_service.health_checker.run_health_check(check)
+        
+        return {
+            "success": True,
+            "data": health_result
+        }
+        
+    except Exception as e:
+        logger.error(f"Health check failed: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Health check failed: {str(e)}"
+        )
+
+
+@router.get("/maintenance")
+async def get_maintenance_status(
+    monitoring_service: MonitoringService = Depends(get_monitoring_service)
+):
+    """
+    Get maintenance scheduler status
+    
+    Returns information about scheduled maintenance tasks, their run history,
+    and current status.
+    """
+    try:
+        scheduler_status = monitoring_service.maintenance_scheduler.get_scheduler_status()
+        
+        return {
+            "success": True,
+            "data": scheduler_status
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to get maintenance status: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to get maintenance status: {str(e)}"
+        )
+
+
+@router.post("/maintenance/run/{task_name}")
+async def run_maintenance_task(
+    task_name: str,
+    background_tasks: BackgroundTasks,
+    monitoring_service: MonitoringService = Depends(get_monitoring_service)
+):
+    """
+    Manually run a maintenance task
+    
+    Triggers immediate execution of a scheduled maintenance task.
+    """
+    try:
+        scheduler = monitoring_service.maintenance_scheduler
+        
+        if task_name not in scheduler.scheduled_tasks:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Maintenance task '{task_name}' not found"
+            )
+        
+        if task_name in scheduler.running_tasks:
+            raise HTTPException(
+                status_code=409,
+                detail=f"Maintenance task '{task_name}' is already running"
+            )
+        
+        # Run task in background
+        task_info = scheduler.scheduled_tasks[task_name]
+        background_tasks.add_task(
+            scheduler._run_maintenance_task,
+            task_name,
+            task_info
+        )
+        
+        return {
+            "success": True,
+            "message": f"Maintenance task '{task_name}' started",
+            "task_name": task_name
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to run maintenance task: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to run maintenance task: {str(e)}"
+        )
+
+
+@router.get("/tasks/{task_id}")
+async def get_task_metrics(
+    task_id: str,
+    monitoring_service: MonitoringService = Depends(get_monitoring_service)
+):
+    """
+    Get metrics for a specific task
+    
+    Returns detailed performance metrics for a running or completed task.
+    """
+    try:
+        task_metrics = monitoring_service.task_tracker.get_task_metrics(task_id)
+        
+        if not task_metrics:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Task '{task_id}' not found in tracking"
+            )
+        
+        return {
+            "success": True,
+            "data": task_metrics.__dict__
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get task metrics: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to get task metrics: {str(e)}"
+        )
+
+
+@router.post("/tasks/{task_id}/start")
+async def start_task_tracking(
+    task_id: str,
+    node_id: str,
+    monitoring_service: MonitoringService = Depends(get_monitoring_service)
+):
+    """
+    Start tracking a task
+    
+    Begins performance monitoring for a task execution.
+    """
+    try:
+        monitoring_service.task_tracker.start_task_tracking(task_id, node_id)
+        
+        return {
+            "success": True,
+            "message": f"Started tracking task '{task_id}'",
+            "task_id": task_id,
+            "node_id": node_id
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to start task tracking: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to start task tracking: {str(e)}"
+        )
+
+
+@router.post("/tasks/{task_id}/complete")
+async def complete_task_tracking(
+    task_id: str,
+    status: str,
+    exit_code: Optional[int] = None,
+    error_message: Optional[str] = None,
+    monitoring_service: MonitoringService = Depends(get_monitoring_service)
+):
+    """
+    Complete task tracking
+    
+    Finalizes performance monitoring for a task execution.
+    """
+    try:
+        if status not in ["completed", "failed", "cancelled"]:
+            raise HTTPException(
+                status_code=400,
+                detail="Status must be one of: completed, failed, cancelled"
+            )
+        
+        monitoring_service.task_tracker.complete_task_tracking(
+            task_id, status, exit_code, error_message
+        )
+        
+        return {
+            "success": True,
+            "message": f"Completed tracking task '{task_id}'",
+            "task_id": task_id,
+            "final_status": status
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to complete task tracking: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to complete task tracking: {str(e)}"
+        )
+
+
+@router.get("/alerts")
+async def get_system_alerts(
+    severity: Optional[str] = None,
+    hours: int = 24,
+    monitoring_service: MonitoringService = Depends(get_monitoring_service)
+):
+    """
+    Get system alerts
+    
+    Returns system alerts based on resource usage thresholds and
+    health check results.
+    """
+    try:
+        if severity and severity not in ["warning", "critical"]:
+            raise HTTPException(
+                status_code=400,
+                detail="Severity must be 'warning' or 'critical'"
+            )
+        
+        # Get recent health check results
+        health_result = await monitoring_service.health_checker.run_health_check()
+        
+        # Get resource metrics for alert analysis
+        resource_summary = monitoring_service.resource_monitor.get_resource_summary()
+        
+        alerts = []
+        
+        # Check health status for alerts
+        for check_name, check_result in health_result.get("checks", {}).items():
+            check_status = check_result.get("status")
+            if check_status in ["warning", "critical"]:
+                if not severity or check_status == severity:
+                    alerts.append({
+                        "type": "health_check",
+                        "source": check_name,
+                        "severity": check_status,
+                        "message": check_result.get("message", ""),
+                        "timestamp": check_result.get("timestamp", health_result["timestamp"])
+                    })
+        
+        # Check resource usage for alerts
+        current_metrics = resource_summary.get("current")
+        if current_metrics:
+            if current_metrics.get("cpu_percent", 0) > 90:
+                alerts.append({
+                    "type": "resource_usage",
+                    "source": "cpu",
+                    "severity": "critical",
+                    "message": f"High CPU usage: {current_metrics['cpu_percent']:.1f}%",
+                    "timestamp": current_metrics.get("timestamp")
+                })
+            
+            if current_metrics.get("memory_percent", 0) > 95:
+                alerts.append({
+                    "type": "resource_usage",
+                    "source": "memory",
+                    "severity": "critical",
+                    "message": f"Critical memory usage: {current_metrics['memory_percent']:.1f}%",
+                    "timestamp": current_metrics.get("timestamp")
+                })
+        
+        return {
+            "success": True,
+            "data": {
+                "alerts": alerts,
+                "total_alerts": len(alerts),
+                "time_period_hours": hours,
+                "severity_filter": severity
+            }
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get system alerts: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to get system alerts: {str(e)}"
+        )
+
+
+@router.get("/metrics/export")
+async def export_metrics(
+    format: str = "json",
+    hours: int = 24,
+    monitoring_service: MonitoringService = Depends(get_monitoring_service)
+):
+    """
+    Export monitoring metrics
+    
+    Exports system metrics in various formats for external monitoring
+    systems or analysis tools.
+    """
+    try:
+        if format not in ["json", "csv"]:
+            raise HTTPException(
+                status_code=400,
+                detail="Format must be 'json' or 'csv'"
+            )
+        
+        if hours < 1 or hours > 168:  # Max 1 week
+            raise HTTPException(
+                status_code=400,
+                detail="Hours must be between 1 and 168 (1 week)"
+            )
+        
+        # Collect all metrics
+        resource_history = monitoring_service.resource_monitor.get_metrics_history(hours)
+        performance_summary = monitoring_service.task_tracker.get_performance_summary(hours)
+        environment_summary = monitoring_service.environment_manager.get_environment_summary()
+        
+        export_data = {
+            "export_timestamp": datetime.utcnow().isoformat(),
+            "time_period_hours": hours,
+            "resource_metrics": [m.__dict__ for m in resource_history],
+            "performance_metrics": performance_summary,
+            "environment_metrics": environment_summary
+        }
+        
+        if format == "json":
+            return {
+                "success": True,
+                "format": "json",
+                "data": export_data
+            }
+        else:
+            # For CSV format, we'd need to flatten the data structure
+            # This is a simplified implementation
+            return {
+                "success": True,
+                "format": "csv",
+                "message": "CSV export not fully implemented",
+                "data": export_data
+            }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to export metrics: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to export metrics: {str(e)}"
+        )

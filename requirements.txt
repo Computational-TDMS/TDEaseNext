@@ -1,0 +1,56 @@
+# FastAPI Backend Requirements for TDEase
+
+# FastAPI and ASGI server
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+python-multipart==0.0.6
+
+# Data validation and serialization
+pydantic==2.5.0
+pydantic-settings==2.1.0
+
+# Database
+sqlalchemy==2.0.23
+aiosqlite==0.19.0
+
+# Async support
+aiofiles==23.2.1
+websockets==12.0
+
+# Configuration and utilities
+pyyaml==6.0.1
+python-jose[cryptography]==3.3.0
+
+# Cross-platform support
+psutil==5.9.6
+pathlib2==2.3.7
+
+# Logging
+structlog==23.2.0
+
+# Existing project dependencies (keep existing ones)
+# Keep these in sync with the existing TDEase requirements
+numpy>=1.24.3
+pandas>=2.0.3
+matplotlib>=3.7.2
+plotly>=5.17.0
+
+# Development and testing
+pytest==7.4.3
+pytest-asyncio==0.21.1
+pytest-cov==4.1.0
+black==23.11.0
+isort==5.12.0
+mypy==1.7.1
+
+# Security
+python-multipart==0.0.6
+cryptography==41.0.7
+
+# Optional: For production deployment
+gunicorn==21.2.0
+redis==5.0.1
+
+# Platform-specific dependencies (install as needed)
+# Windows: pywin32==306  # Uncomment for Windows deployment
+# Both: see install-platform-deps.sh

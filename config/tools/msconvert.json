@@ -1,0 +1,106 @@
+{
+  "id": "msconvert",
+  "name": "MSConvert",
+  "version": "3.0.26015",
+  "description": "MSConvert: Convert mass spectrometry data formats (ProteoWizard)",
+  "executionMode": "native",
+  "command": {
+    "executable": "C:\\Users\\ray\\AppData\\Local\\Apps\\ProteoWizard 3.0.26015.d85166d 64-bit\\msconvert.exe"
+  },
+  "ports": {
+    "inputs": [
+      {
+        "id": "input_files",
+        "name": "Input Files",
+        "dataType": "raw",
+        "required": true,
+        "accept": ["raw", "mzml", "mzxml"],
+        "positional": true,
+        "positionalOrder": 0
+      }
+    ],
+    "outputs": [
+      {
+        "id": "mzml",
+        "name": "mzML",
+        "dataType": "mzml",
+        "pattern": "{sample}.mzML",
+        "handle": "mzml",
+        "provides": ["mzml"]
+      }
+    ]
+  },
+  "parameters": {
+    "format": {
+      "flag": "",
+      "type": "choice",
+      "label": "Output Format",
+      "description": "Output format",
+      "group": "basic",
+      "default": "mzML",
+      "choices": {
+        "mzML": "--mzML",
+        "mzXML": "--mzXML",
+        "mgf": "--mgf",
+        "mz5": "--mz5",
+        "mzMLb": "--mzMLb"
+      }
+    },
+    "mz_precision": {
+      "flag": "",
+      "type": "choice",
+      "label": "m/z Precision",
+      "description": "m/z precision (bits)",
+      "group": "advanced",
+      "default": "64",
+      "choices": {
+        "32": "--mz32",
+        "64": "--mz64"
+      }
+    },
+    "intensity_precision": {
+      "flag": "",
+      "type": "choice",
+      "label": "Intensity Precision",
+      "description": "Intensity precision (bits)",
+      "group": "advanced",
+      "default": "64",
+      "choices": {
+        "32": "--inten32",
+        "64": "--inten64"
+      }
+    },
+    "default_precision": {
+      "flag": "",
+      "type": "choice",
+      "label": "Default Precision",
+      "description": "Default precision (bits)",
+      "group": "advanced",
+      "default": "64",
+      "choices": {
+        "32": "--32",
+        "64": "--64"
+      }
+    },
+    "filters": {
+      "flag": "--filter",
+      "type": "value",
+      "label": "Filters",
+      "description": "Peak picking filters",
+      "group": "advanced"
+    },
+    "verbose": {
+      "flag": "-v",
+      "type": "boolean",
+      "label": "Verbose",
+      "description": "Verbose output",
+      "group": "advanced",
+      "default": false
+    }
+  },
+  "output": {
+    "flagSupported": true,
+    "flag": "-o",
+    "flagValue": "."
+  }
+}

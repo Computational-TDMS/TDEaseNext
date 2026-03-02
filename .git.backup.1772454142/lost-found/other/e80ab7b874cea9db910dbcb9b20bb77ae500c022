@@ -1,0 +1,139 @@
+#!/usr/bin/env python3
+"""
+创建测试用户并获取 API key
+
+直接通过数据库创建用户，然后获取 API key
+"""
+import sys
+from pathlib import Path
+
+# 添加项目路径
+project_root = Path(__file__).parent
+sys.path.insert(0, str(project_root))
+sys.path.insert(0, str(project_root / "src"))
+
+from galaxy.app import UniverseApplication
+from galaxy.config import GalaxyAppConfiguration
+from galaxy.main_config import find_config
+
+
+def create_test_user_and_get_api_key(
+    email: str = "test@example.com",
+    username: str = "testuser",
+    password: str = "testpass123"
+):
+    """创建测试用户并获取 API key"""
+    # 加载配置
+    config_file = project_root / "config" / "galaxy.yml"
+    if not config_file.exists():
+        print(f"❌ 配置文件不存在: {config_file}")
+        return None
+    
+    print(f"📋 加载配置: {config_file}")
+    
+    # 使用与 galaxy_main.py 相同的方式加载配置和创建应用
+    from galaxy.main_config import absolute_config_path
+    import os
+    import logging
+    
+    # 设置配置文件路径
+    config_file_str = str(config_file)
+    os.environ["GALAXY_CONFIG_FILE"] = config_file_str
+    
+    # 创建简单的参数对象（模拟命令行参数）
+    class Args:
+        config_file = config_file_str
+        app = None
+        server_name = "main"
+        log_file = None
+    
+    args = Args()
+    
+    # 使用 galaxy_main.py 的 load_galaxy_app 函数
+    from galaxy_main import load_galaxy_app, GalaxyConfigBuilder
+    
+    config_builder = GalaxyConfigBuilder(args)
+    app = load_galaxy_app(config_builder, config_env=False, log=logging.getLogger(__name__))
+    
+    print(f"✅ Galaxy 应用已初始化\n")
+    
+    # 检查用户是否已存在
+    try:
+        user = app.user_manager.get_user_by_identity(email)
+        if user:
+            print(f"⚠️  用户已存在: {email}")
+            print(f"   用户ID: {user.id}")
+    except Exception:
+        user = None
+    
+    if not user:
+        print(f"📝 创建新用户...")
+        print(f"   邮箱: {email}")
+        print(f"   用户名: {username}")
+        
+        # 使用 UserManager 创建用户
+        session = app.model.context
+        user = app.model.User(email=email, username=username)
+        user.set_password_cleartext(password)
+        session.add(user)
+        session.commit()
+        
+        print(f"✅ 用户创建成功")
+        print(f"   用户ID: {user.id}\n")
+    
+    # 获取或创建 API key
+    print(f"🔑 获取 API key...")
+    api_key_manager = app.api_keys_manager
+    api_key_str = api_key_manager.get_or_create_api_key(user)
+    
+    print(f"✅ API key: {api_key_str}")
+    print(f"\n📋 使用说明:")
+    print(f"   在 test_workflow_api.py 中设置:")
+    print(f"   API_KEY = '{api_key_str}'")
+    print(f"\n   或者在环境变量中:")
+    print(f"   export GALAXY_API_KEY='{api_key_str}'")
+    print(f"\n   或者使用 Basic Auth:")
+    print(f"   curl -u {email}:{password} http://localhost:8000/api/version")
+    
+    return {
+        "email": email,
+        "username": username,
+        "user_id": user.id,
+        "api_key": api_key_str
+    }
+
+
+def main():
+    """主函数"""
+    import argparse
+    
+    parser = argparse.ArgumentParser(description="创建测试用户并获取 API key")
+    parser.add_argument("--email", default="test@example.com", help="用户邮箱")
+    parser.add_argument("--username", default="testuser", help="用户名")
+    parser.add_argument("--password", default="testpass123", help="密码")
+    
+    args = parser.parse_args()
+    
+    try:
+        result = create_test_user_and_get_api_key(
+            email=args.email,
+            username=args.username,
+            password=args.password
+        )
+        
+        if result:
+            print("\n✅ 完成!")
+            sys.exit(0)
+        else:
+            print("\n❌ 失败")
+            sys.exit(1)
+            
+    except Exception as e:
+        print(f"\n❌ 错误: {e}")
+        import traceback
+        traceback.print_exc()
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()

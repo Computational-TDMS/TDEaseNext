@@ -1,0 +1,64 @@
+samples:
+- Sorghum-Histone0810162L20
+workdir: results
+paths:
+  fasta_loader_1_input_template: /home/ray/TDEase-Backend/{sample}.fasta
+  data_loader_1_input_template: /home/ray/TDEase-Backend/data/{sample}.mzML
+  fasta_file: UniProt_sorghum_focus1.fasta
+nodes:
+  data_loader_1:
+    type: data_loader
+    params:
+      copy_strategy: copy
+  fasta_loader_1:
+    type: fasta_loader
+    params:
+      copy_strategy: copy
+  topfd_1:
+    type: topfd
+    params:
+      activation: FILE
+      max_charge: '30'
+      max_mass: '70000'
+      mz_error: '0.02'
+      ms_one_sn_ratio: '3'
+      ms_two_sn_ratio: '1'
+      precursor_window: '3.0'
+      ecscore_cutoff: '0.1'
+      min_scan_number: '1'
+      thread_number: '12'
+      missing_level_one: false
+      msdeconv: false
+      env_cnn_cutoff: '0.0'
+      disable_frag_num_filtering: false
+      single_scan_noise: false
+      disable_additional_feature_search: false
+      split_intensity_ratio: '2.5'
+      skip_html_folder: false
+  toppic_1:
+    type: toppic
+    params:
+      activation: FILE
+      fixed_mod: None
+      n_terminal_form: NONE,NME,NME_ACETYLATION,M_ACETYLATION
+      proteoform_type: COMPLETE,PREFIX,SUFFIX,INTERNAL
+      num_shift: '1'
+      min_shift: '-500'
+      max_shift: '500'
+      variable_ptm_num: '3'
+      mass_error_tolerance: '10'
+      proteoform_error_tolerance: '1.2'
+      spectrum_cutoff_type: EVALUE
+      spectrum_cutoff_value: '0.01'
+      proteoform_cutoff_type: EVALUE
+      proteoform_cutoff_value: '0.01'
+      miscore_threshold: '0.15'
+      thread_number: '12'
+      decoy: false
+      approximate_spectra: false
+      lookup_table: false
+      no_topfd_feature: false
+      keep_temp_files: false
+      keep_decoy_ids: false
+      skip_html_folder: false
+      num_combined_spectra: '1'

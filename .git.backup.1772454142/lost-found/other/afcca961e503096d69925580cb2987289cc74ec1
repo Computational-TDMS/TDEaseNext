@@ -1,0 +1,40 @@
+# 系统配置管理
+from pydantic import BaseSettings
+from pathlib import Path
+import os
+
+class Settings(BaseSettings):
+    # 基础配置
+    app_name: str = "Workflow Engine"
+    debug: bool = False
+    
+    # 数据存储
+    data_dir: Path = Path("data")
+    workflows_dir: Path = Path("data/workflows")
+    plugins_dir: Path = Path("data/plugins")
+    temp_dir: Path = Path("data/temp")
+    
+    # MCP配置
+    mcp_server_host: str = "localhost"
+    mcp_server_port: int = 8001
+    mcp_tools_config: Path = Path("config/mcp_tools.json")
+    
+    # 执行环境
+    python_env_path: str = "venv"
+    max_concurrent_nodes: int = 4
+    node_timeout: int = 300  # 5分钟
+    
+    # WebSocket
+    websocket_host: str = "localhost"
+    websocket_port: int = 8002
+    
+    class Config:
+        env_file = ".env"
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        # 确保目录存在
+        for dir_path in [self.data_dir, self.workflows_dir, self.plugins_dir, self.temp_dir]:
+            dir_path.mkdir(parents=True, exist_ok=True)
+
+settings = Settings()

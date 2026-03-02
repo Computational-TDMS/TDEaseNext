@@ -1,0 +1,38 @@
+{
+  "id": "tool_b",
+  "name": "Tool B (Mock)",
+  "version": "1.0.0",
+  "description": "Mock tool B: 读取 A 输出，输出 {sample}_b.txt",
+  "executionMode": "script",
+  "command": {
+    "executable": "tests/fixtures/tools/tool_b.py",
+    "interpreter": "python"
+  },
+  "ports": {
+    "inputs": [
+      {
+        "id": "txt_files",
+        "name": "Input",
+        "dataType": "txt",
+        "required": true,
+        "accept": ["txt"],
+        "positional": true,
+        "positionalOrder": 0
+      }
+    ],
+    "outputs": [
+      {
+        "id": "output",
+        "name": "Output",
+        "dataType": "txt",
+        "pattern": "{sample}_b.txt",
+        "handle": "output"
+      }
+    ]
+  },
+  "parameters": {},
+  "output": {
+    "flagSupported": true,
+    "flag": "-o"
+  }
+}

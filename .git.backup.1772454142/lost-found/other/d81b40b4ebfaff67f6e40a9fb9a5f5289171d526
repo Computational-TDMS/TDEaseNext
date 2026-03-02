@@ -1,0 +1,456 @@
+"""
+Database service for managing database operations
+"""
+import logging
+from typing import Optional, List
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select, update, delete, func
+from sqlalchemy.orm import selectinload
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
+from datetime import datetime, timedelta
+
+from app.core.database import get_db_session
+from app.models import Project, Workflow, Task, Environment
+
+logger = logging.getLogger(__name__)
+
+
+class DatabaseService:
+    """Service for database operations with comprehensive CRUD functionality"""
+    
+    def __init__(self):
+        self.logger = logger
+    
+    # Project operations
+    async def create_project(self, name: str, description: Optional[str] = None, 
+                           path: Optional[str] = None) -> Project:
+        """Create a new project"""
+        try:
+            async for session in get_db_session():
+                project = Project(
+                    name=name,
+                    description=description,
+                    path=path or f"./projects/{name.lower().replace(' ', '_')}"
+                )
+                session.add(project)
+                await session.commit()
+                await session.refresh(project)
+                self.logger.info(f"Created project: {project.id} - {project.name}")
+                return project
+        except IntegrityError as e:
+            self.logger.error(f"Failed to create project due to integrity error: {e}")
+            raise
+        except SQLAlchemyError as e:
+            self.logger.error(f"Database error creating project: {e}")
+            raise
+    
+    async def get_project(self, project_id: str) -> Optional[Project]:
+        """Get project by ID with relationships"""
+        try:
+            async for session in get_db_session():
+                result = await session.execute(
+                    select(Project)
+                    .options(
+                        selectinload(Project.workflows),
+                        selectinload(Project.tasks)
+                    )
+                    .where(Project.id == project_id)
+                )
+                return result.scalar_one_or_none()
+        except SQLAlchemyError as e:
+            self.logger.error(f"Database error getting project {project_id}: {e}")
+            raise
+    
+    async def list_projects(self, limit: Optional[int] = None, 
+                          offset: Optional[int] = None) -> List[Project]:
+        """List all projects with optional pagination"""
+        try:
+            async for session in get_db_session():
+                query = select(Project).order_by(Project.created_at.desc())
+                if limit:
+                    query = query.limit(limit)
+                if offset:
+                    query = query.offset(offset)
+                
+                result = await session.execute(query)
+                return list(result.scalars().all())
+        except SQLAlchemyError as e:
+            self.logger.error(f"Database error listing projects: {e}")
+            raise
+    
+    async def update_project(self, project_id: str, name: Optional[str] = None,
+                           description: Optional[str] = None, 
+                           path: Optional[str] = None) -> Optional[Project]:
+        """Update project details"""
+        try:
+            async for session in get_db_session():
+                project = await session.get(Project, project_id)
+                if not project:
+                    return None
+                
+                if name is not None:
+                    project.name = name
+                if description is not None:
+                    project.description = description
+                if path is not None:
+                    project.path = path
+                
+                project.updated_at = datetime.utcnow()
+                await session.commit()
+                await session.refresh(project)
+                self.logger.info(f"Updated project: {project.id}")
+                return project
+        except SQLAlchemyError as e:
+            self.logger.error(f"Database error updating project {project_id}: {e}")
+            raise
+    
+    async def delete_project(self, project_id: str) -> bool:
+        """Delete project and all related data"""
+        try:
+            async for session in get_db_session():
+                project = await session.get(Project, project_id)
+                if not project:
+                    return False
+                
+                await session.delete(project)
+                await session.commit()
+                self.logger.info(f"Deleted project: {project_id}")
+                return True
+        except SQLAlchemyError as e:
+            self.logger.error(f"Database error deleting project {project_id}: {e}")
+            raise
+    
+    # Workflow operations
+    async def create_workflow(self, name: str, config: dict, project_id: str,
+                            description: Optional[str] = None) -> Workflow:
+        """Create a new workflow"""
+        try:
+            async for session in get_db_session():
+                # Verify project exists
+                project = await session.get(Project, project_id)
+                if not project:
+                    raise ValueError(f"Project {project_id} not found")
+                
+                workflow = Workflow(
+                    name=name,
+                    description=description,
+                    config=config,
+                    project_id=project_id
+                )
+                session.add(workflow)
+                await session.commit()
+                await session.refresh(workflow)
+                self.logger.info(f"Created workflow: {workflow.id} - {workflow.name}")
+                return workflow
+        except SQLAlchemyError as e:
+            self.logger.error(f"Database error creating workflow: {e}")
+            raise
+    
+    async def get_workflow(self, workflow_id: str) -> Optional[Workflow]:
+        """Get workflow by ID with relationships"""
+        try:
+            async for session in get_db_session():
+                result = await session.execute(
+                    select(Workflow)
+                    .options(
+                        selectinload(Workflow.tasks),
+                        selectinload(Workflow.project)
+                    )
+                    .where(Workflow.id == workflow_id)
+                )
+                return result.scalar_one_or_none()
+        except SQLAlchemyError as e:
+            self.logger.error(f"Database error getting workflow {workflow_id}: {e}")
+            raise
+    
+    async def list_workflows_by_project(self, project_id: str) -> List[Workflow]:
+        """List workflows for a specific project"""
+        try:
+            async for session in get_db_session():
+                result = await session.execute(
+                    select(Workflow)
+                    .where(Workflow.project_id == project_id)
+                    .order_by(Workflow.created_at.desc())
+                )
+                return list(result.scalars().all())
+        except SQLAlchemyError as e:
+            self.logger.error(f"Database error listing workflows for project {project_id}: {e}")
+            raise
+    
+    async def update_workflow(self, workflow_id: str, name: Optional[str] = None,
+                            description: Optional[str] = None, 
+                            config: Optional[dict] = None,
+                            is_active: Optional[bool] = None) -> Optional[Workflow]:
+        """Update workflow details"""
+        try:
+            async for session in get_db_session():
+                workflow = await session.get(Workflow, workflow_id)
+                if not workflow:
+                    return None
+                
+                if name is not None:
+                    workflow.name = name
+                if description is not None:
+                    workflow.description = description
+                if config is not None:
+                    workflow.config = config
+                if is_active is not None:
+                    workflow.is_active = is_active
+                
+                workflow.updated_at = datetime.utcnow()
+                await session.commit()
+                await session.refresh(workflow)
+                self.logger.info(f"Updated workflow: {workflow.id}")
+                return workflow
+        except SQLAlchemyError as e:
+            self.logger.error(f"Database error updating workflow {workflow_id}: {e}")
+            raise
+    
+    # Task operations
+    async def create_task(self, node_id: str, workflow_id: str, project_id: str,
+                         config: Optional[dict] = None, 
+                         input_data: Optional[dict] = None) -> Task:
+        """Create a new task"""
+        try:
+            async for session in get_db_session():
+                # Verify workflow and project exist
+                workflow = await session.get(Workflow, workflow_id)
+                if not workflow:
+                    raise ValueError(f"Workflow {workflow_id} not found")
+                
+                project = await session.get(Project, project_id)
+                if not project:
+                    raise ValueError(f"Project {project_id} not found")
+                
+                task = Task(
+                    node_id=node_id,
+                    workflow_id=workflow_id,
+                    project_id=project_id,
+                    config=config or {},
+                    input_data=input_data or {}
+                )
+                session.add(task)
+                await session.commit()
+                await session.refresh(task)
+                self.logger.info(f"Created task: {task.id} - {task.node_id}")
+                return task
+        except SQLAlchemyError as e:
+            self.logger.error(f"Database error creating task: {e}")
+            raise
+    
+    async def get_task(self, task_id: str) -> Optional[Task]:
+        """Get task by ID with relationships"""
+        try:
+            async for session in get_db_session():
+                result = await session.execute(
+                    select(Task)
+                    .options(
+                        selectinload(Task.workflow),
+                        selectinload(Task.project)
+                    )
+                    .where(Task.id == task_id)
+                )
+                return result.scalar_one_or_none()
+        except SQLAlchemyError as e:
+            self.logger.error(f"Database error getting task {task_id}: {e}")
+            raise
+    
+    async def list_tasks_by_workflow(self, workflow_id: str) -> List[Task]:
+        """List tasks for a specific workflow"""
+        try:
+            async for session in get_db_session():
+                result = await session.execute(
+                    select(Task)
+                    .where(Task.workflow_id == workflow_id)
+                    .order_by(Task.created_at.desc())
+                )
+                return list(result.scalars().all())
+        except SQLAlchemyError as e:
+            self.logger.error(f"Database error listing tasks for workflow {workflow_id}: {e}")
+            raise
+    
+    async def list_tasks_by_status(self, status: str, 
+                                 limit: Optional[int] = None) -> List[Task]:
+        """List tasks by status"""
+        try:
+            async for session in get_db_session():
+                query = select(Task).where(Task.status == status).order_by(Task.created_at.desc())
+                if limit:
+                    query = query.limit(limit)
+                
+                result = await session.execute(query)
+                return list(result.scalars().all())
+        except SQLAlchemyError as e:
+            self.logger.error(f"Database error listing tasks by status {status}: {e}")
+            raise
+    
+    async def update_task_status(self, task_id: str, status: str, 
+                               result: Optional[dict] = None,
+                               error_message: Optional[str] = None,
+                               started_at: Optional[datetime] = None,
+                               completed_at: Optional[datetime] = None,
+                               cpu_time: Optional[str] = None,
+                               memory_peak: Optional[str] = None) -> bool:
+        """Update task status and execution details"""
+        try:
+            async for session in get_db_session():
+                update_values = {
+                    "status": status,
+                    "updated_at": datetime.utcnow()
+                }
+                
+                if result is not None:
+                    update_values["result"] = result
+                if error_message is not None:
+                    update_values["error_message"] = error_message
+                if started_at is not None:
+                    update_values["started_at"] = started_at
+                if completed_at is not None:
+                    update_values["completed_at"] = completed_at
+                if cpu_time is not None:
+                    update_values["cpu_time"] = cpu_time
+                if memory_peak is not None:
+                    update_values["memory_peak"] = memory_peak
+                
+                stmt = update(Task).where(Task.id == task_id).values(**update_values)
+                result = await session.execute(stmt)
+                await session.commit()
+                
+                if result.rowcount > 0:
+                    self.logger.info(f"Updated task {task_id} status to {status}")
+                    return True
+                return False
+        except SQLAlchemyError as e:
+            self.logger.error(f"Database error updating task {task_id}: {e}")
+            raise
+    
+    # Environment operations
+    async def create_environment(self, hash: str, path: str, 
+                               dependencies: List[str]) -> Environment:
+        """Create a new environment record"""
+        try:
+            async for session in get_db_session():
+                environment = Environment(
+                    hash=hash,
+                    path=path,
+                    dependencies=dependencies
+                )
+                session.add(environment)
+                await session.commit()
+                await session.refresh(environment)
+                self.logger.info(f"Created environment: {environment.id} - {environment.hash}")
+                return environment
+        except IntegrityError as e:
+            # Environment with this hash already exists
+            self.logger.warning(f"Environment with hash {hash} already exists")
+            return await self.get_environment_by_hash(hash)
+        except SQLAlchemyError as e:
+            self.logger.error(f"Database error creating environment: {e}")
+            raise
+    
+    async def get_environment_by_hash(self, hash: str) -> Optional[Environment]:
+        """Get environment by hash"""
+        try:
+            async for session in get_db_session():
+                result = await session.execute(
+                    select(Environment).where(Environment.hash == hash)
+                )
+                return result.scalar_one_or_none()
+        except SQLAlchemyError as e:
+            self.logger.error(f"Database error getting environment by hash {hash}: {e}")
+            raise
+    
+    async def list_environments(self, valid_only: bool = True) -> List[Environment]:
+        """List all environments, optionally filter by validity"""
+        try:
+            async for session in get_db_session():
+                query = select(Environment).order_by(Environment.last_used.desc())
+                if valid_only:
+                    query = query.where(Environment.is_valid == True)
+                
+                result = await session.execute(query)
+                return list(result.scalars().all())
+        except SQLAlchemyError as e:
+            self.logger.error(f"Database error listing environments: {e}")
+            raise
+    
+    async def update_environment_last_used(self, hash: str) -> bool:
+        """Update environment last used timestamp"""
+        try:
+            async for session in get_db_session():
+                stmt = (
+                    update(Environment)
+                    .where(Environment.hash == hash)
+                    .values(
+                        last_used=datetime.utcnow(),
+                        updated_at=datetime.utcnow()
+                    )
+                )
+                result = await session.execute(stmt)
+                await session.commit()
+                return result.rowcount > 0
+        except SQLAlchemyError as e:
+            self.logger.error(f"Database error updating environment {hash}: {e}")
+            raise
+    
+    async def mark_environment_invalid(self, hash: str) -> bool:
+        """Mark environment as invalid"""
+        try:
+            async for session in get_db_session():
+                stmt = (
+                    update(Environment)
+                    .where(Environment.hash == hash)
+                    .values(
+                        is_valid=False,
+                        updated_at=datetime.utcnow()
+                    )
+                )
+                result = await session.execute(stmt)
+                await session.commit()
+                return result.rowcount > 0
+        except SQLAlchemyError as e:
+            self.logger.error(f"Database error marking environment {hash} invalid: {e}")
+            raise
+    
+    async def cleanup_old_environments(self, days_old: int = 30) -> int:
+        """Clean up environments older than specified days"""
+        try:
+            async for session in get_db_session():
+                cutoff_date = datetime.utcnow() - timedelta(days=days_old)
+                stmt = (
+                    delete(Environment)
+                    .where(Environment.last_used < cutoff_date)
+                    .where(Environment.is_valid == False)
+                )
+                result = await session.execute(stmt)
+                await session.commit()
+                self.logger.info(f"Cleaned up {result.rowcount} old environments")
+                return result.rowcount
+        except SQLAlchemyError as e:
+            self.logger.error(f"Database error cleaning up environments: {e}")
+            raise
+    
+    # Statistics and monitoring
+    async def get_project_stats(self, project_id: str) -> dict:
+        """Get statistics for a project"""
+        try:
+            async for session in get_db_session():
+                # Count workflows
+                workflow_count = await session.execute(
+                    select(func.count(Workflow.id)).where(Workflow.project_id == project_id)
+                )
+                
+                # Count tasks by status
+                task_stats = await session.execute(
+                    select(Task.status, func.count(Task.id))
+                    .where(Task.project_id == project_id)
+                    .group_by(Task.status)
+                )
+                
+                return {
+                    "workflow_count": workflow_count.scalar(),
+                    "task_stats": dict(task_stats.fetchall())
+                }
+        except SQLAlchemyError as e:
+            self.logger.error(f"Database error getting project stats {project_id}: {e}")
+            raise

@@ -1,0 +1,48 @@
+{
+  "id": "data_loader",
+  "name": "Data Loader",
+  "version": "1.0.0",
+  "description": "Import raw data files into the workspace",
+  "executionMode": "script",
+  "command": {
+    "executable": "src/nodes/data_loader.py",
+    "interpreter": "python",
+    "useUv": true
+  },
+  "ports": {
+    "inputs": [
+      {
+        "id": "input_sources",
+        "name": "Input Files",
+        "dataType": "raw",
+        "required": true,
+        "accept": ["raw", "mzml", "wiff", "d"],
+        "positional": false
+      }
+    ],
+    "outputs": [
+      {
+        "id": "output",
+        "name": "Output",
+        "dataType": "raw",
+        "pattern": "{sample}.raw",
+        "handle": "output",
+        "provides": ["raw"]
+      }
+    ]
+  },
+  "parameters": {
+    "input_sources": {
+      "flag": "input",
+      "type": "value",
+      "label": "Input Files",
+      "description": "List of input file paths (comma-separated)",
+      "group": "basic",
+      "required": true
+    }
+  },
+  "output": {
+    "flagSupported": true,
+    "flag": "--output"
+  }
+}

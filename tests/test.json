@@ -1,0 +1,144 @@
+{
+  "metadata": {
+    "id": "wf_test_full",
+    "name": "TOPFD/TOPPIC 示例工作流",
+    "version": "1.0.0",
+    "description": "完整的TopFD和TopPIC工作流示例",
+    "author": "TDEase",
+    "created": "2024-01-01T00:00:00Z",
+    "modified": "2024-01-01T00:00:00Z",
+    "tags": ["test", "topfd", "toppic"],
+    "sample_context": {
+      "sample": "Sorghum-Histone0810162L20",
+      "fasta_filename": "UniProt_sorghum_focus1"
+    }
+  },
+  "format_version": "2.0",
+  "nodes": [
+    {
+      "id": "data_loader_1",
+      "type": "tool",
+      "position": { "x": 120, "y": 120 },
+      "data": {
+        "label": "数据加载器",
+        "type": "data_loader",
+        "params": {
+          "input_sources": [
+            "D:/Projects/TDEase-Backend/data/Sorghum-Histone0810162L20.raw"
+          ],
+          "copy_strategy": "copy"
+        }
+      }
+    },
+    {
+      "id": "fasta_loader_1",
+      "type": "tool",
+      "position": { "x": 120, "y": 280 },
+      "data": {
+        "label": "FASTA加载器",
+        "type": "fasta_loader",
+        "params": {
+          "fasta_file": "D:/Projects/TDEase-Backend/data/UniProt_sorghum_focus1.fasta",
+          "copy_strategy": "copy"
+        }
+      }
+    },
+    {
+      "id": "msconvert_1",
+      "type": "tool",
+      "position": { "x": 300, "y": 120 },
+      "data": {
+        "label": "MSConvert",
+        "type": "msconvert",
+        "params": {
+          "format": "mzML",
+          "mz_precision": "64",
+          "intensity_precision": "64",
+          "filters": "peakPicking true 1-"
+        }
+      }
+    },
+    {
+      "id": "topfd_1",
+      "type": "tool",
+      "position": { "x": 520, "y": 120 },
+      "data": {
+        "label": "TopFD",
+        "type": "topfd",
+        "params": {
+          "activation": "FILE",
+          "max_charge": "30",
+          "max_mass": "70000",
+          "mz_error": "0.02",
+          "ms_one_sn_ratio": "3",
+          "ms_two_sn_ratio": "1",
+          "precursor_window": "3.0",
+          "ecscore_cutoff": "0.1",
+          "min_scan_number": "1",
+          "thread_number": "12",
+          "env_cnn_cutoff": "0.0",
+          "split_intensity_ratio": "2.5"
+        }
+      }
+    },
+    {
+      "id": "toppic_1",
+      "type": "tool",
+      "position": { "x": 800, "y": 120 },
+      "data": {
+        "label": "TopPIC",
+        "type": "toppic",
+        "params": {
+          "activation": "FILE",
+          "n_terminal_form": "NONE,NME,NME_ACETYLATION,M_ACETYLATION",
+          "proteoform_type": "COMPLETE,PREFIX,SUFFIX,INTERNAL",
+          "num_shift": "1",
+          "min_shift": "-500",
+          "max_shift": "500",
+          "variable_ptm_num": "3",
+          "mass_error_tolerance": "10",
+          "proteoform_error_tolerance": "1.2",
+          "spectrum_cutoff_type": "EVALUE",
+          "spectrum_cutoff_value": "0.01",
+          "proteoform_cutoff_type": "EVALUE",
+          "proteoform_cutoff_value": "0.01",
+          "miscore_threshold": "0.15",
+          "thread_number": "12",
+          "num_combined_spectra": "1"
+        }
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "e1",
+      "source": "data_loader_1",
+      "target": "msconvert_1",
+      "sourceHandle": "output-output",
+      "targetHandle": "input-input_files"
+    },
+    {
+      "id": "e2",
+      "source": "msconvert_1",
+      "target": "topfd_1",
+      "sourceHandle": "output-mzml",
+      "targetHandle": "input-input_files"
+    },
+    {
+      "id": "e3",
+      "source": "topfd_1",
+      "target": "toppic_1",
+      "sourceHandle": "output-msalign",
+      "targetHandle": "input-msalign_files",
+      "dataPath": { "s": "0", "t": "0" }
+    },
+    {
+      "id": "e4",
+      "source": "fasta_loader_1",
+      "target": "toppic_1",
+      "sourceHandle": "output-fasta",
+      "targetHandle": "input-fasta_file"
+    }
+  ],
+  "projectSettings": {}
+}

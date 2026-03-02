@@ -1,0 +1,222 @@
+# TDEase 
+
+## 🎯 项目概述
+
+TDEase是一个为个人开发者简化的质谱数据分析工作流平台。**专注核心功能，快速验证想法**。
+
+**核心流程**: VueFlow → FastAPI → Snakemake → 质谱工具 → 结果
+
+## 🚀 快速开始路径
+
+### 📖 文档
+
+1. **[技术栈](TECHNOLOGY_STACK.md)**
+   - 5分钟环境搭建
+   - 最小依赖配置
+   - 核心工具集成
+
+2. **[Snakemake实现指南](SNAKEMAKE_GUIDE.md)**
+   - 快速参考
+   - 详细实现
+   - 基于官方文档的最佳实践
+
+3. **[系统架构](ARCHITECTURE.md)**
+   - 简化架构（个人开发版）
+   - 详细架构（生产环境版）
+   - 核心模块设计
+
+4. **[工作流文件管理常见问题](FAQ_WORKFLOW_FILES.md)**
+   - 文件存储方式（临时 vs 持久化）
+   - Conda 环境配置
+   - config.yaml 功能限制
+
+## 📁 项目结构
+
+```
+TDEase/
+├── backend/                    # 后端核心
+│   ├── app/
+│   │   ├── main.py            # FastAPI应用入口
+│   │   ├── api/workflow.py    # 工作流API
+│   │   ├── core/compiler.py   # VueFlow编译器
+│   │   ├── core/executor.py   # Snakemake执行器
+│   │   └── tools/             # 质谱工具
+│   ├── data/
+│   │   ├── tdease.db         # SQLite数据库
+│   │   └── workflows/        # Snakemake工作流
+│   └── docs/                 # 本文档目录
+├── frontend/                  # VueFlow前端 (已有)
+└── docs/                     # 文档根目录
+```
+
+## 🔧 核心技术栈
+
+### 必需组件
+```bash
+FastAPI 0.104+    # Web框架
+Python 3.11+      # 编程语言
+Snakemake 8.0+    # 工作流引擎
+OpenMS            # 质谱工具
+SQLite            # 数据库 (开发)
+```
+
+### 环境准备 (5分钟)
+```bash
+# 1. 创建环境
+conda create -n tdease python=3.12 -y
+conda activate tdease
+
+# 2. 安装基础包
+pip install fastapi uvicorn sqlalchemy pydantic
+
+# 3. 安装Snakemake和OpenMS
+conda install -c conda-forge -c bioconda snakemake openms
+
+# 4. 验证安装
+snakemake --version && FileConverter --version
+```
+
+## 🎯 开发路径
+
+### 第一阶段: 基础框架 (2小时)
+- [x] 环境搭建
+- [ ] FastAPI基础应用
+- [ ] VueFlow到Snakemake编译器
+- [ ] 简单工作流执行
+
+### 第二阶段: 核心功能 (3-5天)
+- [ ] OpenMS工具集成
+- [ ] 实时状态监控
+- [ ] 错误处理机制
+- [ ] 前端对接
+
+### 第三阶段: 完善优化 (2-3天)
+- [ ] 更多质谱工具
+- [ ] 性能优化
+- [ ] 部署配置
+- [ ] 文档完善
+
+## 🧪 测试指南
+
+### 快速测试
+```bash
+# 1. 启动后端
+cd backend
+uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+
+# 2. 测试API
+curl http://localhost:8000/
+
+# 3. 测试工作流编译
+curl -X POST http://localhost:8000/api/workflows/compile \
+  -H "Content-Type: application/json" \
+  -d '{"vueflow_json": {"nodes": [], "edges": []}, "name": "test"}'
+```
+
+### 测试工作流数据
+```json
+{
+  "vueflow_json": {
+    "nodes": [
+      {
+        "id": "input",
+        "type": "dataLoader",
+        "data": {"config": {"file_path": "./data/sample.mzML"}}
+      },
+      {
+        "id": "process",
+        "type": "massSpecAnalyzer",
+        "data": {"config": {"mass_tolerance": 10.0}}
+      }
+    ],
+    "edges": [
+      {"id": "e1", "source": "input", "target": "process"}
+    ]
+  },
+  "name": "测试工作流"
+}
+```
+
+## 📚 参考文档
+
+### 开发参考
+- [FastAPI官方文档](https://fastapi.tiangolo.com/)
+- [Snakemake文档](https://snakemake.readthedocs.io/)
+- [OpenMS教程](https://openms.de/)
+- [VueFlow文档](https://vueflow.dev/)
+
+### 质谱工具
+- [OpenMS工具列表](https://openms.de/documentation/)
+- [MassQL查询语言](https://github.com/michaelbargmann/massql)
+- [ProteoWizard](http://proteowizard.sourceforge.net/)
+
+## 🔍 常见问题
+
+### Q: 如何选择数据库？
+**A**: 开发用SQLite (零配置)，生产用PostgreSQL (高性能)
+
+### Q: OpenMS安装困难？
+**A**: 使用Conda安装最简单：`conda install -c bioconda openms`
+
+### Q: Snakemake环境问题？
+**A**: 确保 `--use-conda` 和正确的 `conda_prefix` 配置
+
+### Q: 前端如何对接？
+**A**: VueFlow发送JSON到FastAPI，接收WebSocket状态更新
+
+### Q: 生成的Snakefile是临时文件吗？
+**A**: 不是，应该持久化保存到 `data/workflows/{workflow_id}/` 目录。详见[工作流文件管理常见问题](FAQ_WORKFLOW_FILES.md)
+
+### Q: config.yaml 可以修改节点架构吗？
+**A**: 不可以。config.yaml 只能调整参数，不能修改节点架构。修改架构需要重新编译工作流。详见[工作流文件管理常见问题](FAQ_WORKFLOW_FILES.md)
+
+## 💡 开发建议
+
+### 个人开发最佳实践
+1. **先跑通核心**: VueFlow → Snakemake → OpenMS
+2. **逐步添加**: 从简单功能开始，避免一次性实现所有功能
+3. **重视测试**: 特别注意工作流编译和执行部分
+4. **记录问题**: 遇到的坑都要记录下来
+5. **版本控制**: 使用Git管理所有代码和配置
+
+### 性能优化建议
+1. **并发处理**: Snakemake使用多核心 (`--cores 4`)
+2. **缓存结果**: 启用Snakemake增量执行
+3. **环境复用**: 预先创建Conda环境
+4. **监控工具**: 添加基础日志和错误监控
+
+## 🚀 快速命令清单
+
+```bash
+# 开发环境
+conda activate tdease
+uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+
+# 数据库
+alembic upgrade head                    # 数据库迁移
+
+# 测试
+pytest                                 # 运行测试
+curl http://localhost:8000/docs         # API文档
+
+# 生产部署
+docker-compose up -d                   # Docker部署
+```
+
+---
+
+## 📞 获取帮助
+
+如果遇到问题：
+1. 先查看[Snakemake集成步骤](SNAKEMAKE_INTEGRATION.md)的常见问题部分
+2. 检查工具版本和安装状态
+3. 查看相关官方文档
+4. 记录详细错误信息
+
+**记住**: 个人开发的核心是快速验证和迭代，不要过度追求完美！
+
+---
+
+**最后更新**: 2025-01-23
+**版本**: v1.0.0 (个人开发版)
+**核心理念**: 简单、直接、可用

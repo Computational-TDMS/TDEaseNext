@@ -1,0 +1,15 @@
+galaxy:
+  database_connection: sqlite:///data/universe.sqlite?isolation_level=IMMEDIATE
+  require_login: true
+  allow_user_creation: true
+  admin_users: admin@example.com
+  id_secret: CHANGE-ME-32-CHARS-MINIMUM
+  file_path: data/files
+  new_file_path: data/tmp
+  tool_data_path: data/tool_data
+  tool_config_file: config/tool_conf.xml
+  job_config_file: config/job_conf.xml
+  track_jobs_in_database: true
+  cleanup_job: onsuccess
+  debug: false
+  enable_tool_shed_check: false

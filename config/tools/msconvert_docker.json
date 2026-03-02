@@ -1,0 +1,398 @@
+{
+  "id": "msconvert_docker",
+  "name": "MSConvert Docker",
+  "version": "1.0.0",
+  "description": "ProteoWizard msconvert via Docker; mounts workspace to /data and supports comprehensive msconvert options including filters, compression, and format conversion",
+  "executionMode": "script",
+  "command": {
+    "executable": "scripts/msconvert_docker.py",
+    "interpreter": "python"
+  },
+  "ports": {
+    "inputs": [
+      {
+        "id": "input_files",
+        "name": "Input Files",
+        "dataType": "raw",
+        "required": true,
+        "accept": ["raw", "mzml", "mzxml"],
+        "pattern": "{sample}.{ext}"
+      }
+    ],
+    "outputs": [
+      {
+        "id": "mzml",
+        "name": "mzML Output",
+        "dataType": "mzml",
+        "pattern": "{sample}.mzML",
+        "handle": "mzml"
+      },
+      {
+        "id": "mzxml",
+        "name": "mzXML Output",
+        "dataType": "mzxml",
+        "pattern": "{sample}.mzXML",
+        "handle": "mzxml"
+      },
+      {
+        "id": "mgf",
+        "name": "MGF Output",
+        "dataType": "mgf",
+        "pattern": "{sample}.mgf",
+        "handle": "mgf"
+      },
+      {
+        "id": "mz5",
+        "name": "mz5 Output",
+        "dataType": "mz5",
+        "pattern": "{sample}.mz5",
+        "handle": "mz5"
+      },
+      {
+        "id": "mzmlb",
+        "name": "mzMLb Output",
+        "dataType": "mzmlb",
+        "pattern": "{sample}.mzMLb",
+        "handle": "mzmlb"
+      }
+    ]
+  },
+  "parameters": {
+    "format": {
+      "flag": "--format",
+      "type": "choice",
+      "label": "Format",
+      "description": "Output format",
+      "group": "basic",
+      "choices": ["mzML", "mzXML", "mgf", "mz5", "mzMLb", "text", "ms1", "cms1", "ms2", "cms2"],
+      "default": "mzML"
+    },
+    "extension": {
+      "flag": "--extension",
+      "type": "value",
+      "label": "Extension",
+      "description": "Output file extension",
+      "group": "advanced"
+    },
+    "default_precision": {
+      "flag": "--default_precision",
+      "type": "choice",
+      "label": "Default Precision",
+      "description": "Default binary precision",
+      "group": "advanced",
+      "choices": ["32", "64"],
+      "default": "64"
+    },
+    "mz_precision": {
+      "flag": "--mz_precision",
+      "type": "choice",
+      "label": "m/z Precision",
+      "description": "m/z binary precision",
+      "group": "advanced",
+      "choices": ["32", "64"],
+      "default": "64"
+    },
+    "intensity_precision": {
+      "flag": "--intensity_precision",
+      "type": "choice",
+      "label": "Intensity Precision",
+      "description": "Intensity binary precision",
+      "group": "advanced",
+      "choices": ["32", "64"],
+      "default": "64"
+    },
+    "mz_truncation": {
+      "flag": "--mz_truncation",
+      "type": "value",
+      "label": "m/z Truncation",
+      "description": "m/z truncation value",
+      "group": "advanced"
+    },
+    "intensity_truncation": {
+      "flag": "--intensity_truncation",
+      "type": "value",
+      "label": "Intensity Truncation",
+      "description": "Intensity truncation value",
+      "group": "advanced"
+    },
+    "mz_delta": {
+      "flag": "--mz_delta",
+      "type": "boolean",
+      "label": "m/z Delta",
+      "description": "Use m/z delta encoding",
+      "group": "advanced",
+      "default": false
+    },
+    "intensity_delta": {
+      "flag": "--intensity_delta",
+      "type": "boolean",
+      "label": "Intensity Delta",
+      "description": "Use intensity delta encoding",
+      "group": "advanced",
+      "default": false
+    },
+    "mz_linear": {
+      "flag": "--mz_linear",
+      "type": "boolean",
+      "label": "m/z Linear",
+      "description": "Use linear prediction for m/z",
+      "group": "advanced",
+      "default": false
+    },
+    "intensity_linear": {
+      "flag": "--intensity_linear",
+      "type": "boolean",
+      "label": "Intensity Linear",
+      "description": "Use linear prediction for intensity",
+      "group": "advanced",
+      "default": false
+    },
+    "gzip": {
+      "flag": "--gzip",
+      "type": "boolean",
+      "label": "Gzip Compression",
+      "description": "Use gzip compression",
+      "group": "advanced",
+      "default": false
+    },
+    "zlib": {
+      "flag": "--zlib",
+      "type": "value",
+      "label": "Zlib Compression",
+      "description": "Zlib compression level",
+      "group": "advanced"
+    },
+    "numpress_linear": {
+      "flag": "--numpress_linear",
+      "type": "value",
+      "label": "Numpress Linear",
+      "description": "Numpress linear compression",
+      "group": "advanced"
+    },
+    "numpress_linear_abstol": {
+      "flag": "--numpress_linear_abstol",
+      "type": "value",
+      "label": "Numpress Linear Abs Tol",
+      "description": "Numpress linear absolute tolerance",
+      "group": "advanced"
+    },
+    "numpress_pic": {
+      "flag": "--numpress_pic",
+      "type": "boolean",
+      "label": "Numpress Pic",
+      "description": "Use Numpress PIC compression",
+      "group": "advanced",
+      "default": false
+    },
+    "numpress_slof": {
+      "flag": "--numpress_slof",
+      "type": "value",
+      "label": "Numpress Slof",
+      "description": "Numpress SLOF compression",
+      "group": "advanced"
+    },
+    "numpress_all": {
+      "flag": "--numpress_all",
+      "type": "boolean",
+      "label": "Numpress All",
+      "description": "Use Numpress for all data",
+      "group": "advanced",
+      "default": false
+    },
+    "mzmlb_chunk_size": {
+      "flag": "--mzmlb_chunk_size",
+      "type": "value",
+      "label": "mzMLb Chunk Size",
+      "description": "mzMLb chunk size",
+      "group": "advanced"
+    },
+    "mzmlb_compression_level": {
+      "flag": "--mzmlb_compression_level",
+      "type": "value",
+      "label": "mzMLb Compression Level",
+      "description": "mzMLb compression level",
+      "group": "advanced"
+    },
+    "verbose": {
+      "flag": "--verbose",
+      "type": "boolean",
+      "label": "Verbose",
+      "description": "Verbose output",
+      "group": "advanced",
+      "default": false
+    },
+    "noindex": {
+      "flag": "--noindex",
+      "type": "boolean",
+      "label": "No Index",
+      "description": "Don't create index",
+      "group": "advanced",
+      "default": false
+    },
+    "contact_info": {
+      "flag": "--contact_info",
+      "type": "value",
+      "label": "Contact Info",
+      "description": "Contact information",
+      "group": "advanced"
+    },
+    "merge": {
+      "flag": "--merge",
+      "type": "boolean",
+      "label": "Merge",
+      "description": "Merge input files",
+      "group": "advanced",
+      "default": false
+    },
+    "sim_as_spectra": {
+      "flag": "--sim_as_spectra",
+      "type": "boolean",
+      "label": "SIM as Spectra",
+      "description": "Treat SIM as spectra",
+      "group": "advanced",
+      "default": false
+    },
+    "srm_as_spectra": {
+      "flag": "--srm_as_spectra",
+      "type": "boolean",
+      "label": "SRM as Spectra",
+      "description": "Treat SRM as spectra",
+      "group": "advanced",
+      "default": false
+    },
+    "combine_ion_mobility_spectra": {
+      "flag": "--combine_ion_mobility_spectra",
+      "type": "boolean",
+      "label": "Combine Ion Mobility Spectra",
+      "description": "Combine ion mobility spectra",
+      "group": "advanced",
+      "default": false
+    },
+    "dda_processing": {
+      "flag": "--dda_processing",
+      "type": "boolean",
+      "label": "DDA Processing",
+      "description": "DDA processing mode",
+      "group": "advanced",
+      "default": false
+    },
+    "ignore_calibration_scans": {
+      "flag": "--ignore_calibration_scans",
+      "type": "boolean",
+      "label": "Ignore Calibration Scans",
+      "description": "Ignore calibration scans",
+      "group": "advanced",
+      "default": false
+    },
+    "accept_zero_length_spectra": {
+      "flag": "--accept_zero_length_spectra",
+      "type": "boolean",
+      "label": "Accept Zero Length Spectra",
+      "description": "Accept zero length spectra",
+      "group": "advanced",
+      "default": false
+    },
+    "ignore_missing_zero_samples": {
+      "flag": "--ignore_missing_zero_samples",
+      "type": "boolean",
+      "label": "Ignore Missing Zero Samples",
+      "description": "Ignore missing zero samples",
+      "group": "advanced",
+      "default": false
+    },
+    "ignore_unknown_instrument_error": {
+      "flag": "--ignore_unknown_instrument_error",
+      "type": "boolean",
+      "label": "Ignore Unknown Instrument Error",
+      "description": "Ignore unknown instrument error",
+      "group": "advanced",
+      "default": false
+    },
+    "strip_location_from_source_files": {
+      "flag": "--strip_location_from_source_files",
+      "type": "boolean",
+      "label": "Strip Location From Source Files",
+      "description": "Strip location from source files",
+      "group": "advanced",
+      "default": false
+    },
+    "strip_version_from_software": {
+      "flag": "--strip_version_from_software",
+      "type": "boolean",
+      "label": "Strip Version From Software",
+      "description": "Strip version from software",
+      "group": "advanced",
+      "default": false
+    },
+    "single_threaded": {
+      "flag": "--single_threaded",
+      "type": "value",
+      "label": "Single Threaded",
+      "description": "Single threaded mode",
+      "group": "advanced"
+    },
+    "continue_on_error": {
+      "flag": "--continue_on_error",
+      "type": "boolean",
+      "label": "Continue On Error",
+      "description": "Continue on error",
+      "group": "advanced",
+      "default": false
+    },
+    "run_index_set": {
+      "flag": "--run_index_set",
+      "type": "value",
+      "label": "Run Index Set",
+      "description": "Run index set",
+      "group": "advanced"
+    },
+    "filters": {
+      "flag": "--filters",
+      "type": "value",
+      "label": "Filters",
+      "description": "Apply filters",
+      "group": "advanced"
+    },
+    "chromatogram_filters": {
+      "flag": "--chromatogram_filters",
+      "type": "value",
+      "label": "Chromatogram Filters",
+      "description": "Apply chromatogram filters",
+      "group": "advanced"
+    },
+    "config_file": {
+      "flag": "--config_file",
+      "type": "value",
+      "label": "Config File",
+      "description": "Configuration file path",
+      "group": "advanced"
+    },
+    "docker_image": {
+      "flag": "--docker_image",
+      "type": "value",
+      "label": "Docker Image",
+      "description": "Docker image to use",
+      "group": "advanced",
+      "default": "chambm/pwiz-skyline:latest"
+    },
+    "container_mount": {
+      "flag": "--container_mount",
+      "type": "value",
+      "label": "Container Mount",
+      "description": "Container mount point",
+      "group": "advanced",
+      "default": "/data"
+    },
+    "extra_flags": {
+      "flag": "--extra_flags",
+      "type": "value",
+      "label": "Extra Flags",
+      "description": "Extra command line flags",
+      "group": "advanced"
+    }
+  },
+  "output": {
+    "flagSupported": true,
+    "flag": "--output"
+  }
+}

@@ -1,0 +1,605 @@
+# TDEase Backend System Administration Guide
+
+## Overview
+
+This guide covers system administration tasks for maintaining a TDEase Backend deployment, including monitoring, maintenance, troubleshooting, and optimization.
+
+## System Monitoring
+
+### 1. Health Checks
+
+The system provides built-in health monitoring through the monitoring service:
+
+```bash
+# Check overall system health
+curl http://localhost:8000/api/health
+
+# Get detailed system status
+curl http://localhost:8000/api/system/status
+```
+
+**Health Check Components:**
+- Database connectivity
+- Disk space usage
+- Memory usage
+- CPU usage
+- UV environments health
+- Critical services status
+
+### 2. Log Monitoring
+
+**Application Logs:**
+```bash
+# View real-time logs
+tail -f /opt/tdease/logs/app.log
+
+# Search for errors
+grep -i error /opt/tdease/logs/app.log
+
+# View logs by date
+grep "2024-01-01" /opt/tdease/logs/app.log
+```
+
+**System Service Logs:**
+```bash
+# View service logs
+sudo journalctl -u tdease -f
+
+# View logs from last hour
+sudo journalctl -u tdease --since "1 hour ago"
+
+# View logs with specific priority
+sudo journalctl -u tdease -p err
+```
+
+### 3. Resource Monitoring
+
+**CPU and Memory:**
+```bash
+# Monitor system resources
+htop
+
+# Check memory usage by process
+ps aux --sort=-%mem | head -10
+
+# Monitor disk I/O
+iotop
+```
+
+**Database Monitoring:**
+```sql
+-- PostgreSQL monitoring queries
+SELECT * FROM pg_stat_activity WHERE state = 'active';
+SELECT schemaname, tablename, n_tup_ins, n_tup_upd, n_tup_del 
+FROM pg_stat_user_tables;
+SELECT query, calls, total_time, mean_time 
+FROM pg_stat_statements ORDER BY total_time DESC LIMIT 10;
+```
+
+### 4. Environment Monitoring
+
+```bash
+# Check UV environments
+python -c "
+from app.services.environment import UVEnvironmentManager
+manager = UVEnvironmentManager()
+envs = manager.scan_environments()
+print(f'Total environments: {len(envs)}')
+total_size = sum(env.size_mb for env in envs) / 1024
+print(f'Total size: {total_size:.2f} GB')
+"
+
+# List environment directories
+ls -la /opt/tdease/environments/
+
+# Check environment disk usage
+du -sh /opt/tdease/environments/*
+```
+
+## Maintenance Tasks
+
+### 1. Automated Maintenance
+
+The system includes automated maintenance tasks:
+
+```python
+# Check maintenance scheduler status
+from app.services.monitoring import monitoring_service
+status = monitoring_service.maintenance_scheduler.get_scheduler_status()
+print(status)
+```
+
+**Default Maintenance Tasks:**
+- Environment cleanup (every 24 hours)
+- System health checks (every 6 hours)
+- Temporary file cleanup (every 12 hours)
+
+### 2. Manual Maintenance
+
+**Database Maintenance:**
+```bash
+# Run database vacuum (PostgreSQL)
+sudo -u postgres psql tdease_prod -c "VACUUM ANALYZE;"
+
+# Update database statistics
+sudo -u postgres psql tdease_prod -c "ANALYZE;"
+
+# Check database size
+sudo -u postgres psql tdease_prod -c "
+SELECT pg_size_pretty(pg_database_size('tdease_prod')) as db_size;
+"
+```
+
+**Environment Cleanup:**
+```bash
+# Clean old environments (older than 30 days)
+python -c "
+import asyncio
+from app.services.environment import UVEnvironmentManager
+manager = UVEnvironmentManager()
+result = asyncio.run(manager.cleanup_old_environments(max_age_days=30))
+print(f'Cleaned {result[\"environments_removed\"]} environments')
+print(f'Freed {result[\"space_freed_mb\"]:.2f} MB')
+"
+
+# Clean UV cache
+uv cache clean
+
+# Clean temporary files
+find /tmp -name "tdease_*" -mtime +1 -delete
+```
+
+**Log Rotation:**
+```bash
+# Force log rotation
+sudo logrotate -f /etc/logrotate.d/tdease
+
+# Check log sizes
+du -sh /opt/tdease/logs/*
+```
+
+### 3. Backup Procedures
+
+**Database Backup:**
+```bash
+#!/bin/bash
+# Full database backup
+BACKUP_FILE="/opt/backups/tdease_$(date +%Y%m%d_%H%M%S).sql"
+pg_dump -h localhost -U tdease_user tdease_prod > $BACKUP_FILE
+gzip $BACKUP_FILE
+
+# Incremental backup (WAL archiving)
+# Configure in postgresql.conf:
+# archive_mode = on
+# archive_command = 'cp %p /opt/backups/wal/%f'
+```
+
+**Application Backup:**
+```bash
+#!/bin/bash
+# Backup application data
+tar -czf /opt/backups/tdease_app_$(date +%Y%m%d).tar.gz \
+    /opt/tdease/environments \
+    /opt/tdease/logs \
+    /opt/tdease/.env
+
+# Backup configuration
+cp /etc/systemd/system/tdease.service /opt/backups/
+cp /etc/nginx/sites-available/tdease /opt/backups/
+```
+
+**Restore Procedures:**
+```bash
+# Restore database
+gunzip -c /opt/backups/tdease_20240101_120000.sql.gz | \
+    psql -h localhost -U tdease_user tdease_prod
+
+# Restore application data
+tar -xzf /opt/backups/tdease_app_20240101.tar.gz -C /
+chown -R tdease:tdease /opt/tdease/environments
+```
+
+## Performance Optimization
+
+### 1. Database Optimization
+
+**Query Performance:**
+```sql
+-- Enable query statistics
+CREATE EXTENSION IF NOT EXISTS pg_stat_statements;
+
+-- Find slow queries
+SELECT query, calls, total_time, mean_time, rows
+FROM pg_stat_statements 
+ORDER BY total_time DESC 
+LIMIT 10;
+
+-- Index usage analysis
+SELECT schemaname, tablename, attname, n_distinct, correlation
+FROM pg_stats
+WHERE schemaname = 'public'
+ORDER BY n_distinct DESC;
+```
+
+**Connection Pooling:**
+```bash
+# Install and configure pgbouncer
+sudo apt install pgbouncer
+
+# Configure /etc/pgbouncer/pgbouncer.ini
+[databases]
+tdease_prod = host=localhost port=5432 dbname=tdease_prod
+
+[pgbouncer]
+listen_port = 6432
+listen_addr = 127.0.0.1
+auth_type = md5
+auth_file = /etc/pgbouncer/userlist.txt
+pool_mode = transaction
+max_client_conn = 100
+default_pool_size = 20
+```
+
+### 2. Application Optimization
+
+**Worker Configuration:**
+```bash
+# Optimize worker count based on CPU cores
+CPU_CORES=$(nproc)
+WORKERS=$((CPU_CORES * 2 + 1))
+
+# Update systemd service
+sudo systemctl edit tdease
+# Add:
+[Service]
+ExecStart=
+ExecStart=/opt/tdease/.venv/bin/uvicorn main:app --host 0.0.0.0 --port 8000 --workers $WORKERS
+```
+
+**Memory Optimization:**
+```python
+# Configure environment cache limits
+# In .env file:
+UV_CACHE_SIZE=500
+UV_ENVIRONMENT_TIMEOUT=1800
+MAX_CONCURRENT_TASKS=10
+```
+
+### 3. System Optimization
+
+**File System:**
+```bash
+# Optimize for SSD (if applicable)
+echo 'deadline' | sudo tee /sys/block/sda/queue/scheduler
+
+# Increase file descriptor limits
+echo "tdease soft nofile 65536" | sudo tee -a /etc/security/limits.conf
+echo "tdease hard nofile 65536" | sudo tee -a /etc/security/limits.conf
+```
+
+**Network Optimization:**
+```bash
+# Optimize TCP settings
+echo 'net.core.somaxconn = 1024' | sudo tee -a /etc/sysctl.conf
+echo 'net.ipv4.tcp_max_syn_backlog = 1024' | sudo tee -a /etc/sysctl.conf
+sudo sysctl -p
+```
+
+## Troubleshooting
+
+### 1. Common Issues
+
+**Service Won't Start:**
+```bash
+# Check service status
+sudo systemctl status tdease
+
+# Check for port conflicts
+sudo netstat -tlnp | grep :8000
+
+# Check file permissions
+ls -la /opt/tdease/
+sudo chown -R tdease:tdease /opt/tdease/
+
+# Check environment variables
+sudo -u tdease cat /opt/tdease/.env
+```
+
+**Database Connection Issues:**
+```bash
+# Test database connectivity
+psql -h localhost -U tdease_user -d tdease_prod -c "SELECT 1;"
+
+# Check PostgreSQL status
+sudo systemctl status postgresql
+
+# Check connection limits
+sudo -u postgres psql -c "SHOW max_connections;"
+sudo -u postgres psql -c "SELECT count(*) FROM pg_stat_activity;"
+```
+
+**High Memory Usage:**
+```bash
+# Identify memory-consuming processes
+ps aux --sort=-%mem | head -20
+
+# Check for memory leaks
+valgrind --tool=memcheck --leak-check=full python main.py
+
+# Monitor memory over time
+while true; do
+    echo "$(date): $(free -m | grep Mem | awk '{print $3}')" >> memory_usage.log
+    sleep 60
+done
+```
+
+**Environment Creation Failures:**
+```bash
+# Check UV installation
+uv --version
+
+# Test UV functionality
+uv init test_project
+cd test_project
+uv add numpy
+uv run python -c "import numpy; print('OK')"
+
+# Check disk space
+df -h /opt/tdease/environments/
+
+# Check permissions
+ls -la /opt/tdease/environments/
+```
+
+### 2. Debugging Tools
+
+**Application Debugging:**
+```python
+# Enable debug mode temporarily
+import logging
+logging.basicConfig(level=logging.DEBUG)
+
+# Profile performance
+import cProfile
+cProfile.run('your_function()', 'profile_output.prof')
+
+# Memory profiling
+from memory_profiler import profile
+@profile
+def your_function():
+    pass
+```
+
+**Database Debugging:**
+```sql
+-- Check locks
+SELECT * FROM pg_locks WHERE NOT granted;
+
+-- Check blocking queries
+SELECT blocked_locks.pid AS blocked_pid,
+       blocked_activity.usename AS blocked_user,
+       blocking_locks.pid AS blocking_pid,
+       blocking_activity.usename AS blocking_user,
+       blocked_activity.query AS blocked_statement,
+       blocking_activity.query AS current_statement_in_blocking_process
+FROM pg_catalog.pg_locks blocked_locks
+JOIN pg_catalog.pg_stat_activity blocked_activity ON blocked_activity.pid = blocked_locks.pid
+JOIN pg_catalog.pg_locks blocking_locks ON blocking_locks.locktype = blocked_locks.locktype
+JOIN pg_catalog.pg_stat_activity blocking_activity ON blocking_activity.pid = blocking_locks.pid
+WHERE NOT blocked_locks.granted AND blocking_locks.granted;
+```
+
+### 3. Emergency Procedures
+
+**Service Recovery:**
+```bash
+#!/bin/bash
+# emergency_restart.sh
+echo "$(date): Emergency restart initiated" >> /opt/tdease/logs/emergency.log
+
+# Stop service gracefully
+sudo systemctl stop tdease
+sleep 5
+
+# Force kill if necessary
+sudo pkill -f "uvicorn main:app"
+
+# Clear any locks
+sudo rm -f /opt/tdease/*.lock
+
+# Restart service
+sudo systemctl start tdease
+
+# Verify startup
+sleep 10
+curl -f http://localhost:8000/health || echo "Service failed to start"
+```
+
+**Database Recovery:**
+```bash
+# If database is corrupted
+sudo systemctl stop tdease
+sudo systemctl stop postgresql
+
+# Restore from backup
+sudo -u postgres pg_restore -d tdease_prod /opt/backups/latest_backup.sql
+
+sudo systemctl start postgresql
+sudo systemctl start tdease
+```
+
+## Security Management
+
+### 1. Access Control
+
+**User Management:**
+```bash
+# Create admin user
+sudo useradd -m -s /bin/bash tdease_admin
+sudo usermod -aG sudo tdease_admin
+
+# Set up SSH key authentication
+sudo mkdir -p /home/tdease_admin/.ssh
+sudo cp authorized_keys /home/tdease_admin/.ssh/
+sudo chown -R tdease_admin:tdease_admin /home/tdease_admin/.ssh
+sudo chmod 700 /home/tdease_admin/.ssh
+sudo chmod 600 /home/tdease_admin/.ssh/authorized_keys
+```
+
+**File Permissions:**
+```bash
+# Secure application files
+sudo chown -R tdease:tdease /opt/tdease/
+sudo chmod 755 /opt/tdease/
+sudo chmod 600 /opt/tdease/.env
+sudo chmod 644 /opt/tdease/logs/*.log
+```
+
+### 2. SSL/TLS Management
+
+**Certificate Renewal:**
+```bash
+# Renew Let's Encrypt certificates
+sudo certbot renew --dry-run
+sudo certbot renew
+
+# Set up automatic renewal
+echo "0 12 * * * /usr/bin/certbot renew --quiet" | sudo crontab -
+```
+
+**Security Headers:**
+```nginx
+# Add to nginx configuration
+add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+add_header X-Frame-Options DENY always;
+add_header X-Content-Type-Options nosniff always;
+add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+```
+
+### 3. Audit and Compliance
+
+**Access Logging:**
+```bash
+# Enable detailed access logging
+tail -f /var/log/nginx/access.log | grep -E "(POST|PUT|DELETE)"
+
+# Monitor failed login attempts
+grep "authentication failure" /var/log/auth.log
+```
+
+**Security Scanning:**
+```bash
+# Run security scan
+sudo apt install lynis
+sudo lynis audit system
+
+# Check for vulnerabilities
+sudo apt install chkrootkit
+sudo chkrootkit
+```
+
+## Alerting and Notifications
+
+### 1. Email Alerts
+
+```python
+# Configure email alerts in monitoring service
+import smtplib
+from email.mime.text import MIMEText
+
+def send_alert(subject, message):
+    msg = MIMEText(message)
+    msg['Subject'] = f"TDEase Alert: {subject}"
+    msg['From'] = "alerts@yourdomain.com"
+    msg['To'] = "admin@yourdomain.com"
+    
+    server = smtplib.SMTP('localhost')
+    server.send_message(msg)
+    server.quit()
+```
+
+### 2. Slack Integration
+
+```python
+import requests
+
+def send_slack_alert(message):
+    webhook_url = "https://hooks.slack.com/services/YOUR/SLACK/WEBHOOK"
+    payload = {
+        "text": f"🚨 TDEase Alert: {message}",
+        "channel": "#alerts"
+    }
+    requests.post(webhook_url, json=payload)
+```
+
+### 3. Monitoring Scripts
+
+```bash
+#!/bin/bash
+# system_monitor.sh - Run every 5 minutes via cron
+
+# Check service status
+if ! systemctl is-active --quiet tdease; then
+    echo "TDEase service is down" | mail -s "Service Alert" admin@yourdomain.com
+fi
+
+# Check disk space
+DISK_USAGE=$(df /opt/tdease | tail -1 | awk '{print $5}' | sed 's/%//')
+if [ $DISK_USAGE -gt 90 ]; then
+    echo "Disk usage is at ${DISK_USAGE}%" | mail -s "Disk Alert" admin@yourdomain.com
+fi
+
+# Check memory usage
+MEM_USAGE=$(free | grep Mem | awk '{printf "%.0f", $3/$2 * 100.0}')
+if [ $MEM_USAGE -gt 90 ]; then
+    echo "Memory usage is at ${MEM_USAGE}%" | mail -s "Memory Alert" admin@yourdomain.com
+fi
+```
+
+## Disaster Recovery
+
+### 1. Backup Strategy
+
+**3-2-1 Backup Rule:**
+- 3 copies of important data
+- 2 different storage media
+- 1 offsite backup
+
+```bash
+# Automated backup script
+#!/bin/bash
+BACKUP_DIR="/opt/backups"
+REMOTE_BACKUP="user@backup-server:/backups/tdease"
+
+# Create local backup
+pg_dump tdease_prod | gzip > $BACKUP_DIR/db_$(date +%Y%m%d).sql.gz
+tar -czf $BACKUP_DIR/app_$(date +%Y%m%d).tar.gz /opt/tdease/
+
+# Sync to remote server
+rsync -av $BACKUP_DIR/ $REMOTE_BACKUP/
+
+# Clean old backups (keep 30 days)
+find $BACKUP_DIR -name "*.gz" -mtime +30 -delete
+```
+
+### 2. Recovery Procedures
+
+**Complete System Recovery:**
+```bash
+# 1. Restore system from backup
+# 2. Install dependencies
+sudo apt update && sudo apt install -y python3.12 postgresql nginx
+
+# 3. Restore application
+tar -xzf app_backup.tar.gz -C /
+
+# 4. Restore database
+gunzip -c db_backup.sql.gz | psql -U tdease_user tdease_prod
+
+# 5. Start services
+sudo systemctl start postgresql
+sudo systemctl start tdease
+sudo systemctl start nginx
+```
+
+This comprehensive system administration guide provides the tools and procedures needed to maintain a healthy TDEase Backend deployment.
