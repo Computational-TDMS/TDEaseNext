@@ -227,6 +227,44 @@
         }
       }
     },
+    "visualization": {
+      "type": "object",
+      "description": "Visualization configuration for interactive tools",
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["table", "featuremap", "chart", "plot", "custom"],
+          "description": "Visualization type"
+        },
+        "dataSource": {
+          "type": "string",
+          "description": "Where to get data: 'output' (from tool output) or 'file' (read specific file)"
+        },
+        "filePath": {
+          "type": "string",
+          "description": "File path pattern (used when dataSource='file')"
+        },
+        "columns": {
+          "type": "array",
+          "description": "Column definitions for table/featuremap visualization",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {"type": "string"},
+              "name": {"type": "string"},
+              "type": {"type": "string", "enum": ["text", "number", "boolean", "date"]},
+              "visible": {"type": "boolean", "default": true},
+              "sortable": {"type": "boolean", "default": true},
+              "filterable": {"type": "boolean", "default": true}
+            }
+          }
+        },
+        "config": {
+          "type": "object",
+          "description": "Additional visualization configuration"
+        }
+      }
+    },
     "outputFlagSupported": {
       "type": "boolean",
       "description": "Legacy: Use output.flagSupported instead",

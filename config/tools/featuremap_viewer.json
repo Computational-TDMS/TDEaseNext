@@ -1,0 +1,134 @@
+{
+  "id": "featuremap_viewer",
+  "name": "FeatureMap Viewer",
+  "version": "1.0.0",
+  "description": "Interactive FeatureMap visualization for proteoform data exploration",
+  "executionMode": "interactive",
+  "command": {
+    "executable": "featuremap_viewer"
+  },
+  "ports": {
+    "inputs": [
+      {
+        "id": "prsm_file",
+        "name": "PrSM File",
+        "dataType": "prsm",
+        "required": true,
+        "description": "TopPIC PrSM output file"
+      },
+      {
+        "id": "featuremap_file",
+        "name": "FeatureMap File",
+        "dataType": "featuremap",
+        "required": false,
+        "description": "TopPIC FeatureMap output file (optional)"
+      }
+    ],
+    "outputs": []
+  },
+  "parameters": {
+    "min_prob": {
+      "flag": "",
+      "type": "value",
+      "label": "Min Probability",
+      "description": "Minimum probability threshold",
+      "group": "basic",
+      "default": "0.01"
+    },
+    "show_labels": {
+      "flag": "",
+      "type": "boolean",
+      "label": "Show Labels",
+      "description": "Show proteoform labels on plot",
+      "group": "basic",
+      "default": true
+    },
+    "color_by": {
+      "flag": "",
+      "type": "choice",
+      "label": "Color By",
+      "description": "Property to use for color coding",
+      "group": "advanced",
+      "default": "qvalue",
+      "choices": ["qvalue", "evalue", "mass", "charge"]
+    },
+    "max_points": {
+      "flag": "",
+      "type": "value",
+      "label": "Max Points",
+      "description": "Maximum number of points to display",
+      "group": "advanced",
+      "default": "10000"
+    }
+  },
+  "output": {
+    "flagSupported": false
+  },
+  "visualization": {
+    "type": "featuremap",
+    "dataSource": "file",
+    "filePath": "{sample}_ms2.featuremap",
+    "columns": [
+      {
+        "id": "x",
+        "name": "RT (min)",
+        "type": "number",
+        "visible": true,
+        "sortable": false,
+        "filterable": false
+      },
+      {
+        "id": "y",
+        "name": "Mass",
+        "type": "number",
+        "visible": true,
+        "sortable": false,
+        "filterable": false
+      },
+      {
+        "id": "featureInt",
+        "name": "Intensity",
+        "type": "number",
+        "visible": true,
+        "sortable": false,
+        "filterable": false
+      },
+      {
+        "id": "qvalue",
+        "name": "Q-Value",
+        "type": "number",
+        "visible": false,
+        "sortable": false,
+        "filterable": true
+      },
+      {
+        "id": "evalue",
+        "name": "E-Value",
+        "type": "number",
+        "visible": false,
+        "sortable": false,
+        "filterable": true
+      },
+      {
+        "id": "charge",
+        "name": "Charge",
+        "type": "number",
+        "visible": false,
+        "sortable": false,
+        "filterable": true
+      }
+    ],
+    "config": {
+      "plotType": "scatter",
+      "xAxisLabel": "RT (min)",
+      "yAxisLabel": "Mass (Da)",
+      "colorScale": "viridis",
+      "pointSize": 3,
+      "opacity": 0.7,
+      "zoomEnabled": true,
+      "panEnabled": true,
+      "tooltipEnabled": true,
+      "exportFormats": ["png", "svg", "csv"]
+    }
+  }
+}

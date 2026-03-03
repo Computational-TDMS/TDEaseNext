@@ -1,0 +1,107 @@
+{
+  "id": "table_viewer",
+  "name": "Table Viewer",
+  "version": "1.0.0",
+  "description": "Interactive table viewer for exploring tabular data (TSV, CSV, etc.)",
+  "executionMode": "interactive",
+  "command": {
+    "executable": "table_viewer"
+  },
+  "ports": {
+    "inputs": [
+      {
+        "id": "data_file",
+        "name": "Data File",
+        "dataType": "tsv",
+        "required": true,
+        "description": "Tabular data file to visualize"
+      }
+    ],
+    "outputs": []
+  },
+  "parameters": {
+    "max_rows": {
+      "flag": "",
+      "type": "value",
+      "label": "Max Rows",
+      "description": "Maximum number of rows to display",
+      "group": "basic",
+      "default": "1000"
+    },
+    "encoding": {
+      "flag": "",
+      "type": "choice",
+      "label": "File Encoding",
+      "description": "Character encoding",
+      "group": "advanced",
+      "default": "utf-8",
+      "choices": ["utf-8", "latin-1", "ascii"]
+    },
+    "delimiter": {
+      "flag": "",
+      "type": "choice",
+      "label": "Delimiter",
+      "description": "Column delimiter",
+      "group": "advanced",
+      "default": "auto",
+      "choices": ["auto", "tab", "comma", "space"]
+    }
+  },
+  "output": {
+    "flagSupported": false
+  },
+  "visualization": {
+    "type": "table",
+    "dataSource": "file",
+    "filePath": "{input_basename}.tsv",
+    "columns": [
+      {
+        "id": "Sequence",
+        "name": "Sequence",
+        "type": "number",
+        "visible": true,
+        "sortable": true,
+        "filterable": true
+      },
+      {
+        "id": "Proteoform",
+        "name": "Proteoform",
+        "type": "text",
+        "visible": true,
+        "sortable": true,
+        "filterable": true
+      },
+      {
+        "id": "EValue",
+        "name": "E-Value",
+        "type": "number",
+        "visible": true,
+        "sortable": true,
+        "filterable": false
+      },
+      {
+        "id": "QValue",
+        "name": "Q-Value",
+        "type": "number",
+        "visible": true,
+        "sortable": true,
+        "filterable": false
+      },
+      {
+        "id": "Score",
+        "name": "Score",
+        "type": "number",
+        "visible": true,
+        "sortable": true,
+        "filterable": false
+      }
+    ],
+    "config": {
+      "allowExport": true,
+      "allowSort": true,
+      "allowFilter": true,
+      "pageSize": 50,
+      "virtualScroll": true
+    }
+  }
+}

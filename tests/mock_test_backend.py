@@ -85,7 +85,7 @@ def test_api_execute_dryrun():
     client = TestClient(app)
     resp = client.post("/api/workflows/execute", json={
         "workflow": SAMPLE_WORKFLOW,
-        "parameters": {"dryrun": True, "sample": "dummy"},
+        "parameters": {"dryrun": True, "sample": "dummy", "sample_context": {"sample": "dummy"}},
     })
     assert resp.status_code == 200, f"Expected 200, got {resp.status_code}: {resp.text}"
     data = resp.json()
@@ -102,7 +102,7 @@ def test_api_execute_simulate():
     client = TestClient(app)
     resp = client.post("/api/workflows/execute", json={
         "workflow": SAMPLE_WORKFLOW,
-        "parameters": {"simulate": True, "sample": "dummy"},
+        "parameters": {"simulate": True, "sample": "dummy", "sample_context": {"sample": "dummy"}},
     })
     assert resp.status_code == 200
     data = resp.json()
@@ -120,7 +120,7 @@ def test_workspace_creation():
     client = TestClient(app)
     resp = client.post("/api/workflows/execute", json={
         "workflow": SAMPLE_WORKFLOW,
-        "parameters": {"simulate": True, "sample": "dummy"},
+        "parameters": {"simulate": True, "sample": "dummy", "sample_context": {"sample": "dummy"}},
     })
     assert resp.status_code == 200
     data = resp.json()

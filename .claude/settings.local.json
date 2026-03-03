@@ -14,7 +14,10 @@
       "Bash(/tmp/toolbox_extract.py:*)",
       "Bash(pnpm test:run)",
       "Bash(pnpm test:run:*)",
-      "Bash(cd:*)"
+      "Bash(cd:*)",
+      "Bash(ls:*)",
+      "mcp__deepwiki__ask_question",
+      "WebSearch"
     ],
     "deny": [],
     "ask": []

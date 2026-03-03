@@ -4,10 +4,10 @@
   "version": "1.0.0",
   "description": "Import raw data files into the workspace",
   "executionMode": "script",
+  "useParamsJson": true,
   "command": {
     "executable": "src/nodes/data_loader.py",
-    "interpreter": "python",
-    "useUv": true
+    "interpreter": "python"
   },
   "ports": {
     "inputs": [
@@ -25,7 +25,7 @@
         "id": "output",
         "name": "Output",
         "dataType": "raw",
-        "pattern": "{sample}.raw",
+        "pattern": "{sample}.{input_ext}",
         "handle": "output",
         "provides": ["raw"]
       }
@@ -33,7 +33,7 @@
   },
   "parameters": {
     "input_sources": {
-      "flag": "input",
+      "flag": "--input",
       "type": "value",
       "label": "Input Files",
       "description": "List of input file paths (comma-separated)",

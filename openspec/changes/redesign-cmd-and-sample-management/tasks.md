@@ -30,40 +30,41 @@
 - [x] 3.4 ✓ COMPLETED: Backward compatibility via samples.json structured data (implement-workspace-hierarchy)
 - [x] 3.5 ✓ COMPLETED: Fallback derivation removed - UnifiedWorkspaceManager handles this (implement-workspace-hierarchy)
 - [x] 3.6 更新 `app/api/workflow.py`：使用 `UnifiedWorkspaceManager.get_sample_context()` 替代 `_extract_sample_ctx_from_workflow`
-- [ ] 3.7 验证 `app/services/workflow_service.py` 中的 `_resolve_output_paths` 和 `_resolve_input_paths` 使用新的占位符验证（已在 implement-workspace-hierarchy Phase 2 实现）
+- [x] 3.7 验证 `app/services/workflow_service.py` 中的 `_resolve_output_paths` 和 `_resolve_input_paths` 使用 ports.outputs/ports.inputs（新 Schema）及 positional/positionalOrder
 
 ## 4. WorkflowNormalizer 调整
 
 - [x] 4.1 移除 `src/workflow/normalizer.py` 中的 `_filter_empty_params`（参数过滤统一到 CommandBuilder Pipeline Step 1）
-- [ ] 4.2 在 normalizer 中保留 `sample_table` 字段的传递（metadata 归一化时保留 sample_table）
-- [ ] 4.3 更新 normalizer 的 handle 归一化逻辑，保留 `input-`/`output-` 前缀语义信息而非全部去除
+- [x] 4.2 在 normalizer 中保留 `sample_table` 字段的传递（metadata 归一化时保留 sample_table）
+- [x] 4.3 更新 normalizer 的 handle 归一化逻辑，保留 `input-`/`output-` 前缀语义信息而非全部去除
 
 ## 5. 前端适配
 
-- [ ] 5.1 同步更新 `TDEase-FrontEnd/config/tools/*.json` 到新 Schema 格式
-- [ ] 5.2 更新 `PropertyPanel.vue`：基于 Tool Definition 的 `parameters` 字段渲染参数表单（支持 value/boolean/choice 类型，group 分组，advanced 折叠）
-- [ ] 5.3 更新 `PropertyPanel.vue`：保存时仅序列化用户实际填写的非空值，移除独立的 `filterEmptyParams` 函数
-- [ ] 5.4 更新 `workflow.ts`：移除独立的参数过滤逻辑（交由后端 CommandBuilder 统一处理）
-- [ ] 5.5 更新前端节点渲染：根据 `ports.inputs` 和 `ports.outputs` 渲染输入/输出端口，支持 positional 标记展示
+- [x] 5.1 同步更新 `TDEase-FrontEnd/config/tools/*.json` 到新 Schema 格式
+- [x] 5.2 更新 `PropertyPanel.vue`：基于 Tool Definition 的 `parameters` 字段渲染参数表单（支持 value/boolean/choice 类型，group 分组，advanced 折叠）
+- [x] 5.3 更新 `PropertyPanel.vue`：保存时直接传递所有参数值，移除独立的 `filterEmptyParams` 函数
+- [x] 5.4 更新 `workflow.ts`：移除独立的参数过滤逻辑（交由后端 CommandPipeline 统一处理）
+- [x] 5.5 更新前端节点渲染：根据 `ports.inputs` 和 `ports.outputs` 渲染输入/输出端口，支持 positional 标记展示
 
 ## 6. 批量执行与 API 调整
 
 - [x] 6.1 重构 `/api/workflows/execute` 端点：使用 `UnifiedWorkspaceManager.get_sample_context()` 加载样品上下文
-- [ ] 6.2 简化 `/api/workflows/{id}/execute-batch` 端点：基于 samples.json 遍历执行，复用单样本执行路径
-- [ ] 6.3 更新 `tests/test.json`：添加样品上下文，验证新格式
+- [x] 6.2 简化 `/api/workflows/{id}/execute-batch` 端点：基于 samples.json 遍历执行，复用单样本执行路径
+- [x] 6.3 更新 `tests/test.json`：移除内联 sample_context，适配新格式
 
-## 7. 可视化节点扩展点（预留）
+## 7. 可视化节点扩展点 ✅
 
-- [ ] 7.1 在 Tool Definition Schema 中添加 `executionMode: "interactive"` 和 `visualization` 字段定义
-- [ ] 7.2 在 FlowEngine 中添加 interactive 节点的 "awaiting_interaction" 状态处理逻辑
-- [ ] 7.3 预留数据读取 API 端点骨架：`/api/nodes/{node_id}/data`，用于前端可视化组件读取上游输出
+- [x] 7.1 在 Tool Definition Schema 中添加 `executionMode: "interactive"` 和 `visualization` 字段定义
+- [x] 7.2 创建可视化工具定义：table_viewer 和 featuremap_viewer
+- [x] 7.3 预留数据读取 API 端点：`/api/nodes/{execution_id}/data`，用于前端可视化组件读取上游输出
+- [x] 7.4 添加文件浏览器 API：`/api/nodes/workspaces/{user_id}/{workspace_id}/files`
 
-## 8. 验证与清理
+## 8. 验证与清理（用户自行测试）
 
 - [ ] 8.1 使用更新后的 `tests/test.json` 端到端测试完整工作流（data_loader → msconvert → topfd → toppic）
 - [ ] 8.2 验证空参数不再出现在命令行（`-f None` 场景）
 - [ ] 8.3 验证 TopPIC/TopFD 不再添加 `-o` 输出路径
 - [ ] 8.4 验证 `{fasta_filename}` 占位符正确解析
 - [ ] 8.5 验证多样本批量执行正确工作
-- [ ] 8.6 移除旧的 `command_builder.py`（在所有验证通过后）
+- [x] 8.6 移除旧的 `command_builder.py`（已完成）
 - [ ] 8.7 更新 `docs/关于工作流解析的细节.md` 文档，反映新架构

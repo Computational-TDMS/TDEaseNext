@@ -1,71 +1,87 @@
 {
   "metadata": {
     "id": "wf_test_full",
-    "name": "TOPFD/TOPPIC 示例工作流",
-    "version": "1.0.0",
-    "description": "完整的TopFD和TopPIC工作流示例",
+    "name": "TOPFD/TOPPIC 测试工作流",
+    "version": "2.0.0",
+    "description": "完整的TopFD和TopPIC工作流测试 - 使用新架构",
     "author": "TDEase",
-    "created": "2024-01-01T00:00:00Z",
-    "modified": "2024-01-01T00:00:00Z",
-    "tags": ["test", "topfd", "toppic"],
-    "sample_context": {
-      "sample": "Sorghum-Histone0810162L20",
-      "fasta_filename": "UniProt_sorghum_focus1"
-    }
+    "created": "2026-03-02T00:00:00Z",
+    "modified": "2026-03-02T00:00:00Z",
+    "tags": ["test", "topfd", "toppic", "new-architecture"]
   },
   "format_version": "2.0",
   "nodes": [
     {
       "id": "data_loader_1",
-      "type": "tool",
+      "type": "data_loader",
       "position": { "x": 120, "y": 120 },
       "data": {
-        "label": "数据加载器",
-        "type": "data_loader",
-        "params": {
-          "input_sources": [
-            "D:/Projects/TDEase-Backend/data/Sorghum-Histone0810162L20.raw"
-          ],
+        "label": "数据加载器"
+      },
+      "nodeConfig": {
+        "toolId": "data_loader",
+        "paramValues": {
+          "input_sources": ["data/raw/Sorghum-Histone0810162L20.raw"],
           "copy_strategy": "copy"
         }
-      }
+      },
+      "inputs": [],
+      "outputs": [
+        { "id": "mzml", "name": "mzML", "dataType": "mzml" }
+      ]
     },
     {
       "id": "fasta_loader_1",
-      "type": "tool",
+      "type": "fasta_loader",
       "position": { "x": 120, "y": 280 },
       "data": {
-        "label": "FASTA加载器",
-        "type": "fasta_loader",
-        "params": {
-          "fasta_file": "D:/Projects/TDEase-Backend/data/UniProt_sorghum_focus1.fasta",
+        "label": "FASTA加载器"
+      },
+      "nodeConfig": {
+        "toolId": "fasta_loader",
+        "paramValues": {
+          "fasta_file": "data/fasta/UniProt_sorghum_focus1.fasta",
           "copy_strategy": "copy"
         }
-      }
+      },
+      "inputs": [],
+      "outputs": [
+        { "id": "fasta", "name": "FASTA", "dataType": "fasta" }
+      ]
     },
     {
       "id": "msconvert_1",
-      "type": "tool",
+      "type": "msconvert",
       "position": { "x": 300, "y": 120 },
       "data": {
-        "label": "MSConvert",
-        "type": "msconvert",
-        "params": {
+        "label": "MSConvert"
+      },
+      "nodeConfig": {
+        "toolId": "msconvert",
+        "paramValues": {
           "format": "mzML",
           "mz_precision": "64",
           "intensity_precision": "64",
           "filters": "peakPicking true 1-"
         }
-      }
+      },
+      "inputs": [
+        { "id": "input_files", "name": "Input Files", "dataType": "raw", "required": true }
+      ],
+      "outputs": [
+        { "id": "mzml", "name": "mzML", "dataType": "mzml" }
+      ]
     },
     {
       "id": "topfd_1",
-      "type": "tool",
+      "type": "topfd",
       "position": { "x": 520, "y": 120 },
       "data": {
-        "label": "TopFD",
-        "type": "topfd",
-        "params": {
+        "label": "TopFD"
+      },
+      "nodeConfig": {
+        "toolId": "topfd",
+        "paramValues": {
           "activation": "FILE",
           "max_charge": "30",
           "max_mass": "70000",
@@ -79,16 +95,24 @@
           "env_cnn_cutoff": "0.0",
           "split_intensity_ratio": "2.5"
         }
-      }
+      },
+      "inputs": [
+        { "id": "input_files", "name": "mzML Files", "dataType": "mzml", "required": true }
+      ],
+      "outputs": [
+        { "id": "msalign", "name": "MSAlign", "dataType": "msalign" }
+      ]
     },
     {
       "id": "toppic_1",
-      "type": "tool",
+      "type": "toppic",
       "position": { "x": 800, "y": 120 },
       "data": {
-        "label": "TopPIC",
-        "type": "toppic",
-        "params": {
+        "label": "TopPIC"
+      },
+      "nodeConfig": {
+        "toolId": "toppic",
+        "paramValues": {
           "activation": "FILE",
           "n_terminal_form": "NONE,NME,NME_ACETYLATION,M_ACETYLATION",
           "proteoform_type": "COMPLETE,PREFIX,SUFFIX,INTERNAL",
@@ -106,39 +130,46 @@
           "thread_number": "12",
           "num_combined_spectra": "1"
         }
-      }
+      },
+      "inputs": [
+        { "id": "fasta_file", "name": "FASTA 文件", "dataType": "fasta", "required": true },
+        { "id": "msalign_files", "name": "MSAlign 文件", "dataType": "msalign", "required": true }
+      ],
+      "outputs": [
+        { "id": "proteoforms", "name": "Proteoforms TSV", "dataType": "tsv" }
+      ]
     }
   ],
   "edges": [
     {
-      "id": "e1",
+      "id": "e_data_msconvert",
       "source": "data_loader_1",
       "target": "msconvert_1",
-      "sourceHandle": "output-output",
+      "sourceHandle": "output-mzml",
       "targetHandle": "input-input_files"
     },
     {
-      "id": "e2",
+      "id": "e_msconvert_topfd",
       "source": "msconvert_1",
       "target": "topfd_1",
       "sourceHandle": "output-mzml",
       "targetHandle": "input-input_files"
     },
     {
-      "id": "e3",
+      "id": "e_topfd_toppic",
       "source": "topfd_1",
       "target": "toppic_1",
       "sourceHandle": "output-msalign",
-      "targetHandle": "input-msalign_files",
-      "dataPath": { "s": "0", "t": "0" }
+      "targetHandle": "input-msalign_files"
     },
     {
-      "id": "e4",
+      "id": "e_fasta_toppic",
       "source": "fasta_loader_1",
       "target": "toppic_1",
       "sourceHandle": "output-fasta",
       "targetHandle": "input-fasta_file"
     }
   ],
+  "connections": [],
   "projectSettings": {}
 }

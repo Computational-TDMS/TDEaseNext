@@ -4,7 +4,11 @@ import os
 import re
 
 class WorkflowValidator:
-    def validate(self, workflow_v2: Dict[str, Any]) -> Dict[str, Any]:
+    def validate(self, workflow_v2: Dict[str, Any], skip_path_exists: bool = False) -> Dict[str, Any]:
+        """
+        Validate workflow structure and sample paths.
+        skip_path_exists: 为 True 时跳过路径存在性检查（用于 dryrun/simulate）
+        """
         errors: List[Dict[str, Any]] = []
         
         # Validate Galaxy format structure if present
@@ -32,9 +36,10 @@ class WorkflowValidator:
             for s in samples:
                 if s not in sample_paths:
                     errors.append({"code": "SAMPLE_PATH_MISSING", "message": f"样本 '{s}' 缺少原始文件映射", "field": "sample_paths"})
-            for k, v in sample_paths.items():
-                if not os.path.isabs(v) or not os.path.exists(v):
-                    errors.append({"code": "PATH_INVALID", "message": f"样本 '{k}' 的路径不可访问: {v}", "field": "sample_paths"})
+            if not skip_path_exists:
+                for k, v in sample_paths.items():
+                    if not os.path.isabs(v) or not os.path.exists(v):
+                        errors.append({"code": "PATH_INVALID", "message": f"样本 '{k}' 的路径不可访问: {v}", "field": "sample_paths"})
         else:
             samples = ["default"]
             sample_paths = {}

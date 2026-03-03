@@ -816,9 +816,19 @@ async def execute(
     """
     try:
         from src.workflow.normalizer import WorkflowNormalizer
-        workflow_raw = request_data.get("workflow") if isinstance(request_data, dict) else request_data.get("workflow")
-        parameters_raw = request_data.get("parameters", {}) if isinstance(request_data, dict) else (request_data.get("parameters") or {})
-        if isinstance(workflow_raw, str):
+        # 新架构：支持 workflow_id（从数据库加载）或 workflow（直接传递）
+        workflow_id_param = request_data.get("workflow_id") if isinstance(request_data, dict) else None
+        workflow_raw = request_data.get("workflow") if isinstance(request_data, dict) else None
+        parameters_raw = request_data.get("parameters", {}) if isinstance(request_data, dict) else {}
+
+        # 优先使用 workflow_id 从数据库加载
+        if workflow_id_param:
+            workflow_data = await get_workflow_from_database(db, workflow_id_param)
+            if not workflow_data:
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Workflow {workflow_id_param} not found")
+            workflow_raw = workflow_data.get("vueflow_data", {})
+        elif isinstance(workflow_raw, str):
+            # 兼容旧格式：workflow 参数是 ID
             workflow_data = await get_workflow_from_database(db, workflow_raw)
             if not workflow_data:
                 raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Workflow {workflow_raw} not found")
@@ -828,9 +838,22 @@ async def execute(
         edges = wf_v2.get("edges", [])
         logger.info("Execute workflow edges: %s", [(e.get("source"), "->", e.get("target")) for e in edges])
         workflow_id = str(metadata.get("id") or f"wf_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}")
-        root_base = Path(get_workflows_root())
-        root_base.mkdir(parents=True, exist_ok=True)
-        workspace_dir = root_base / workflow_id
+
+        # ===== 工作区路径：新架构用 workspace 目录，兼容旧格式用 data/workflows/{workflow_id} =====
+        user_id = request_data.get("user_id") if isinstance(request_data, dict) else None
+        workspace_id = request_data.get("workspace_id") if isinstance(request_data, dict) else None
+        sample_ids = request_data.get("sample_ids") if isinstance(request_data, dict) else None
+
+        if user_id and workspace_id and sample_ids:
+            from app.services.unified_workspace_manager import get_unified_workspace_manager
+            manager = get_unified_workspace_manager()
+            workspace_dir = manager.get_workspace_path(user_id, workspace_id)
+            workspace_dir = workspace_dir.resolve() if isinstance(workspace_dir, Path) else Path(workspace_dir).resolve()
+        else:
+            root_base = Path(get_workflows_root())
+            root_base.mkdir(parents=True, exist_ok=True)
+            workspace_dir = root_base / workflow_id
+
         workspace_dir.mkdir(parents=True, exist_ok=True)
         (workspace_dir / "logs").mkdir(parents=True, exist_ok=True)
         (workspace_dir / "results").mkdir(parents=True, exist_ok=True)
@@ -861,36 +884,34 @@ async def execute(
         resume = bool(parameters_raw.get("resume", True))
         simulate = bool(parameters_raw.get("simulate", False))
 
-        # ===== 新架构: 从工作区加载样品上下文（必需参数） =====
-        user_id = parameters_raw.get("user_id")
-        workspace_id = parameters_raw.get("workspace_id")
-        sample_ids = parameters_raw.get("sample_ids")
-
-        # 验证必需参数
-        if not user_id or not workspace_id or not sample_ids:
-            raise HTTPException(
-                status_code=400,
-                detail="Missing required parameters: user_id, workspace_id, and sample_ids are required. "
-                      "Please provide workspace and sample information from samples.json."
-            )
-
-        # 从 samples.json 加载样品上下文
-        sample_id = sample_ids[0] if isinstance(sample_ids, list) else sample_ids
-        ctx = _load_sample_context_from_workspace(user_id, workspace_id, sample_id)
-        if not ctx:
-            raise HTTPException(
-                status_code=404,
-                detail=f"Sample '{sample_id}' not found in workspace '{workspace_id}' for user '{user_id}'. "
-                      f"Please ensure the sample is defined in samples.json."
-            )
-
-        sample_ctx: Dict[str, str] = ctx
-        logger.info(f"Loaded sample context from workspace: user={user_id}, workspace={workspace_id}, sample={sample_id}")
+        # ===== 样品上下文：新架构(workspace) 或 兼容旧格式(parameters.sample_context) =====
+        if user_id and workspace_id and sample_ids:
+            # 新架构: 从 samples.json 加载
+            sample_id = sample_ids[0] if isinstance(sample_ids, list) else sample_ids
+            ctx = _load_sample_context_from_workspace(user_id, workspace_id, sample_id)
+            if not ctx:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"Sample '{sample_id}' not found in workspace '{workspace_id}' for user '{user_id}'."
+                )
+            sample_ctx = ctx
+            logger.info(f"Loaded sample context from workspace: user={user_id}, workspace={workspace_id}, sample={sample_id}")
+        else:
+            # 兼容旧格式: dryrun/simulate 时允许仅传 parameters.sample_context
+            sample_ctx = parameters_raw.get("sample_context", {}) or {"sample": parameters_raw.get("sample", "default")}
+            if not sample_ctx:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Provide either (user_id, workspace_id, sample_ids) or parameters.sample_context."
+                )
 
         # 确保所有值都是字符串
         for k, v in sample_ctx.items():
             if v is not None:
                 sample_ctx[k] = str(v)
+
+        # 注入 raw_path/fasta_path 到 data_loader/fasta_loader 节点，供 validator 通过
+        _inject_sample_paths_into_workflow(wf_v2, sample_ctx)
 
         # 检测结构变更：如果 workflow_id 存在，比较当前结构与上次执行的结构
         workflow_snapshot = None
@@ -1112,6 +1133,19 @@ async def get_batch_config(
         )
 
 
+def _inject_sample_paths_into_workflow(wf: Dict[str, Any], sample_ctx: Dict[str, str]) -> None:
+    """将 sample_ctx 中的 raw_path/fasta_path 注入到 data_loader/fasta_loader 节点，供 validator 校验通过"""
+    for node in wf.get("nodes", []):
+        data = node.get("data", {}) or {}
+        tool_type = data.get("type", "")
+        params = data.get("params", {}) or {}
+        if tool_type == "data_loader" and sample_ctx.get("raw_path"):
+            params["input_sources"] = [sample_ctx["raw_path"]]
+        elif tool_type == "fasta_loader" and sample_ctx.get("fasta_path"):
+            params["fasta_file"] = sample_ctx["fasta_path"]
+        node["data"] = {**data, "params": params}
+
+
 def _replace_placeholders(workflow_json: Dict[str, Any], placeholder_values: Dict[str, Any]) -> Dict[str, Any]:
     """Replace placeholder variables in workflow JSON with actual values"""
     import json
@@ -1127,15 +1161,26 @@ def _replace_placeholders(workflow_json: Dict[str, Any], placeholder_values: Dic
 @router.post("/{workflow_id}/execute-batch", response_model=List[WorkflowExecutionResponse])
 async def execute_batch(
     workflow_id: str,
-    batch_config: Optional[BatchConfig] = None,
+    user_id: str,
+    workspace_id: str,
+    sample_ids: List[str],
     db=Depends(get_database),
     workflow_service=Depends(get_workflow_service),
 ) -> List[WorkflowExecutionResponse]:
-    """Execute workflow in batch mode with multiple samples (TDEase 2.0 engine)"""
+    """
+    批量执行工作流 - 基于新架构，从 samples.json 加载样品上下文
+
+    新架构参数:
+    - user_id: 用户ID
+    - workspace_id: 工作区ID
+    - sample_ids: 样品ID列表
+
+    复用单样本执行路径，遍历 samples.json 中的样品定义。
+    """
     try:
         from app.services.paths import get_workflows_root
         from uuid import uuid4
-        
+
         # Get workflow
         cursor = db.cursor()
         cursor.execute("""
@@ -1144,105 +1189,112 @@ async def execute_batch(
             WHERE id = ?
         """, (workflow_id,))
         row = cursor.fetchone()
-        
+
         if not row:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Workflow '{workflow_id}' not found"
             )
-        
+
         vueflow_data_str, workflow_document_str, workflow_format = row
         workflow_json = json.loads(vueflow_data_str)
-        
-        # Get or use provided batch config
-        if not batch_config:
-            cursor.execute("SELECT batch_config FROM workflows WHERE id = ?", (workflow_id,))
-            batch_row = cursor.fetchone()
-            if batch_row and batch_row[0]:
-                batch_config = BatchConfig(**json.loads(batch_row[0]))
-            else:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="Batch configuration not found. Please configure batch settings first."
-                )
-        
-        if not batch_config.samples:
+
+        # 验证样品存在
+        from app.services.unified_workspace_manager import get_unified_workspace_manager
+        manager = get_unified_workspace_manager()
+        samples = manager.list_samples(user_id, workspace_id)
+        valid_samples = set(s.get("id") for s in samples)
+
+        # 验证所有请求的样品ID都存在
+        invalid_samples = set(sample_ids) - valid_samples
+        if invalid_samples:
             raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Batch configuration must contain at least one sample"
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Samples not found in workspace '{workspace_id}': {invalid_samples}. "
+                      f"Available samples: {valid_samples}"
             )
-        
+
         from src.workflow.normalizer import WorkflowNormalizer
         normalizer = WorkflowNormalizer()
         wf_v2 = normalizer.normalize(workflow_json)
-        
-        # Get tools (simplified - in production, load from registry)
-        tools = []  # TODO: Load tools from registry
-        
+
         # Create workspace directory
         root_base = Path(get_workflows_root())
         root_base.mkdir(parents=True, exist_ok=True)
-        
+
         execution_responses = []
-        
-        for batch_sample in batch_config.samples:
-            sample_id = batch_sample.sample_id
-            placeholder_values = batch_sample.placeholder_values
-            
+
+        # 遍历样品，复用单样本执行逻辑
+        for sample_id in sample_ids:
+            # 加载样品上下文（从 samples.json）
+            sample_ctx = _load_sample_context_from_workspace(user_id, workspace_id, sample_id)
+            if not sample_ctx:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"Sample '{sample_id}' not found in workspace '{workspace_id}'"
+                )
+
+            # 每个样本独立的工作区目录
             workspace_dir = root_base / workflow_id / f"batch_{sample_id}"
             workspace_dir.mkdir(parents=True, exist_ok=True)
             (workspace_dir / "logs").mkdir(parents=True, exist_ok=True)
             (workspace_dir / "results").mkdir(parents=True, exist_ok=True)
-            
-            sample_workflow_json = _replace_placeholders(workflow_json, placeholder_values)
-            wf_sample = normalizer.normalize(sample_workflow_json)
-            
-            sample_ctx = dict(placeholder_values)
-            if "sample" not in sample_ctx:
-                sample_ctx["sample"] = sample_id
-            
+
+            # 使用 UnifiedWorkspaceManager 设置执行目录
+            manager.set_execution_directory(user_id, workspace_id, sample_id, str(workspace_dir))
+
             execution_id = str(uuid4())
             store = workflow_service.execution_store
-            
-            # 批量执行时，每个样本使用相同的 workflow 结构，只在第一个样本时检测结构变更
+
+            # 检测结构变更（仅第一个样本）
             workflow_snapshot = None
-            if len(execution_responses) == 0:  # 第一个样本
+            if len(execution_responses) == 0:
                 try:
                     existing_workflow = await get_workflow_from_database(db, workflow_id)
                     if existing_workflow:
                         from app.services.workflow_diff import get_last_execution_snapshot
                         last_exec_id, last_snapshot = get_last_execution_snapshot(db, workflow_id)
                         if last_snapshot:
-                            if has_structure_changed(last_snapshot, wf_sample):
-                                workflow_snapshot = json.dumps(wf_sample)
+                            if has_structure_changed(last_snapshot, wf_v2):
+                                workflow_snapshot = json.dumps(wf_v2)
                         else:
-                            if has_structure_changed(existing_workflow.get("vueflow_data", {}), wf_sample):
-                                workflow_snapshot = json.dumps(wf_sample)
+                            if has_structure_changed(existing_workflow.get("vueflow_data", {}), wf_v2):
+                                workflow_snapshot = json.dumps(wf_v2)
                     else:
-                        workflow_snapshot = json.dumps(wf_sample)
+                        workflow_snapshot = json.dumps(wf_v2)
                 except Exception as e:
                     logger.warning(f"Failed to detect structure change in batch, saving snapshot: {e}")
-                    workflow_snapshot = json.dumps(wf_sample)
-            
+                    workflow_snapshot = json.dumps(wf_v2)
+
             store.create(execution_id, workflow_id, str(workspace_dir), workflow_snapshot)
             execution_manager.create(execution_id, str(workspace_dir), workflow_id)
             execution_manager.update_status(execution_id, "running", start_time=datetime.utcnow().isoformat() + "Z")
             store.start(execution_id)
-            for node in wf_sample.get("nodes", []):
+
+            # 创建节点记录
+            for node in wf_v2.get("nodes", []):
                 nid = node.get("id")
                 if nid:
                     store.create_node(execution_id, nid, f"node_{nid}")
-            
+
+            # 复用单样本执行逻辑（传递样品上下文）
             result = await workflow_service.execute_workflow(
-                workflow_json=wf_sample,
+                workflow_json=wf_v2,
                 workspace_path=workspace_dir,
-                parameters={"sample_context": sample_ctx, "sample": sample_ctx.get("sample", sample_id)},
+                parameters={
+                    "user_id": user_id,
+                    "workspace_id": workspace_id,
+                    "sample_ids": [sample_id],
+                    "sample_context": sample_ctx,
+                    "sample": sample_ctx.get("sample", sample_id)
+                },
                 dryrun=False,
                 resume=True,
                 simulate=False,
                 execution_id=execution_id,
                 workflow_id=workflow_id,
             )
+
             store.finish(execution_id, result.get("status", "completed"))
             execution_manager.update_status(
                 execution_id,
@@ -1250,6 +1302,7 @@ async def execute_batch(
                 end_time=datetime.utcnow().isoformat() + "Z",
                 progress=100 if result.get("status") == "completed" else 0,
             )
+
             execution_responses.append(WorkflowExecutionResponse(
                 executionId=execution_id,
                 status=result.get("status", "completed"),
@@ -1260,9 +1313,11 @@ async def execute_batch(
                 nodes=[{"node_id": k, "status": v} for k, v in result.get("nodes", {}).items()],
                 results=None,
             ))
-        
+
+            logger.info(f"Batch execution completed for sample '{sample_id}': {execution_id}")
+
         return execution_responses
-        
+
     except HTTPException:
         raise
     except Exception as e:

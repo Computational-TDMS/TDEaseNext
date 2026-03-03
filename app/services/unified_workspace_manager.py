@@ -263,30 +263,39 @@ class UnifiedWorkspaceManager:
             return None
 
         # Build full context with auto-derivation
-        return self._build_sample_context(sample, workspace_id)
+        return self._build_sample_context(sample, user_id, workspace_id)
 
     def _build_sample_context(self, sample_def: Dict[str, Any],
-                             workspace_id: str) -> Dict[str, str]:
+                             user_id: str, workspace_id: str) -> Dict[str, str]:
         """
         Build complete sample context with derivation and merging.
 
         Priority: Explicit values > Derived values
+        Includes raw_path, fasta_path as absolute paths for data_loader / fasta_loader.
         """
         explicit_context = sample_def.get("context", {})
         data_paths = sample_def.get("data_paths", {})
+        workspace_path = self.get_workspace_path(user_id, workspace_id)
 
-        # Auto-derive common values
+        # 统一使用 sample_id（或 context 显式值）作为 sample，不按 raw 文件名覆盖；由前端保证正确
         derived = {
             "sample": sample_def.get("id", ""),
         }
 
-        # Derive from data_paths if available
+        # Derive from data_paths if available; resolve to absolute for validator/execution
         raw_path = data_paths.get("raw", "")
         if raw_path:
+            raw_full = (workspace_path / raw_path).resolve()
+            derived["raw_path"] = str(raw_full)
             raw_file = Path(raw_path)
             derived["input_basename"] = raw_file.stem
             derived["input_dir"] = str(raw_file.parent)
             derived["input_ext"] = raw_file.suffix.lstrip(".")
+
+        fasta_path = data_paths.get("fasta", "")
+        if fasta_path:
+            fasta_full = (workspace_path / fasta_path).resolve()
+            derived["fasta_path"] = str(fasta_full)
 
         # Merge: explicit overrides derived
         return {**derived, **explicit_context}

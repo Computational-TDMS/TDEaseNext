@@ -172,7 +172,8 @@ class WorkflowNormalizer:
         return inputs, outputs
 
     def _normalize_handle(self, h: Optional[str]) -> Optional[str]:
-        if not h:
-            return None
-        parts = str(h).split("-")
-        return parts[-1] if parts else h
+        """
+        归一化端口句柄，保留完整的 input-XXX / output-XXX 前缀语义信息。
+        这些前缀对于理解数据流向很重要，不应该被移除。
+        """
+        return h  # 直接返回原始值，保留完整语义

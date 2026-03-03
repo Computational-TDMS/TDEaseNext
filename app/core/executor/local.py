@@ -5,6 +5,9 @@ FlowEngine 原生本地执行器，使用 ShellRunner 执行命令，支持 Cond
 """
 import asyncio
 import logging
+import platform
+import shlex
+import subprocess
 from pathlib import Path
 from typing import List
 
@@ -15,6 +18,13 @@ from .shell_runner import run_shell
 logger = logging.getLogger(__name__)
 
 
+def _cmd_parts_to_shell_string(cmd_parts: List[str]) -> str:
+    """将命令参数列表转为 shell 安全字符串（正确处理含空格的参数如 JSON）"""
+    if platform.system() == "Windows":
+        return subprocess.list2cmdline(cmd_parts)
+    return shlex.join(cmd_parts)
+
+
 def _run_shell(
     cmd_parts: List[str],
     workdir: Path,
@@ -22,8 +32,7 @@ def _run_shell(
     log_callback=None,
 ) -> None:
     """同步执行 Shell 命令，支持 Conda，可选 log_callback 捕获 stdout/stderr"""
-    # Convert command parts to shell string
-    cmd_str = " ".join(cmd_parts)
+    cmd_str = _cmd_parts_to_shell_string(cmd_parts)
     run_shell(cmd=cmd_str, workdir=workdir, conda_env=conda_env, log_callback=log_callback)
 
 
@@ -44,15 +53,17 @@ class LocalExecutor(Executor):
             pipeline = CommandPipeline(tool_info)
 
             # Convert input_paths List[Path] to input_files Dict[str, str]
-            # Map port names to file paths
+            # spec.input_paths 按 positionalOrder 排序，需与 positional 端口顺序一致
             input_files = {}
             ports_inputs = tool_info.get("ports", {}).get("inputs", [])
-            for i, port_def in enumerate(ports_inputs):
-                if isinstance(port_def, dict):
-                    port_id = port_def.get("id", f"input_{i}")
-                else:
-                    port_id = f"input_{i}"
-                if i < len(spec.input_paths):
+            pos_inputs = [
+                p for p in ports_inputs
+                if isinstance(p, dict) and p.get("positional", False)
+            ]
+            pos_inputs.sort(key=lambda x: x.get("positionalOrder", 0))
+            for i, port_def in enumerate(pos_inputs):
+                port_id = port_def.get("id", f"input_{i}")
+                if port_id and i < len(spec.input_paths):
                     input_files[port_id] = str(spec.input_paths[i])
 
             # Determine output directory

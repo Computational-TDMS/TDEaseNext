@@ -6,17 +6,23 @@ This module implements a pipeline approach to command building:
 2. Resolve executable command
 3. Add output flag
 4. Add parameter flags
-5. Add positional arguments
+5. Add params JSON (use_params_json 时)
+6. Add positional arguments
 
 Replaces the old CommandBuilder with a unified, schema-driven approach.
 """
+import json
 import logging
 import shlex
 import platform
+import os
 from pathlib import Path
 from typing import Dict, Any, List, Optional
 
 logger = logging.getLogger(__name__)
+
+# Project root: app/core/executor/command_pipeline.py -> ../../../ = project
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent.parent
 
 
 class CommandPipeline:
@@ -67,7 +73,17 @@ class CommandPipeline:
 
         # Step 2: Resolve executable
         executable = self._resolve_executable()
-        cmd_parts = [executable]
+        
+        # cmd_parts 为原始参数列表，由 LocalExecutor 用 list2cmdline/shlex.join 统一加引号，此处不包一层引号
+        cmd_parts = []
+        if self.execution_mode == "script":
+            parts = executable.split(" ")
+            for part in parts:
+                if part:
+                    cmd_parts.append(part)
+        else:
+            if executable:
+                cmd_parts = [executable]
 
         # Step 3: Add output flag
         if output_dir and self.output_config.get("flagSupported"):
@@ -77,6 +93,14 @@ class CommandPipeline:
 
         # Step 4: Add parameter flags
         cmd_parts.extend(self._build_parameter_flags(filtered_params))
+
+        # Step 4b: Add --params JSON for scripts that need extra params (e.g. sample_name)
+        if self.tool_def.get("useParamsJson") or self.tool_def.get("use_params_json"):
+            # 排除前端/内部字段，只传脚本需要的参数
+            internal_keys = {"tool_type", "type"}
+            params_for_json = {k: v for k, v in filtered_params.items() if k not in internal_keys}
+            params_json = json.dumps(params_for_json)
+            cmd_parts.extend(["--params", params_json])
 
         # Step 5: Add positional arguments
         cmd_parts.extend(self._build_positional_args(input_files))
@@ -125,18 +149,25 @@ class CommandPipeline:
         elif self.execution_mode == "script":
             # Script mode: wrap with interpreter
             executable = self.command_config.get("executable", "")
+            # Resolve relative paths against project root (Shell runs in workspace dir)
+            if executable and not os.path.isabs(executable):
+                resolved = (_PROJECT_ROOT / executable).resolve()
+                if resolved.exists():
+                    executable = str(resolved)
             interpreter = self.command_config.get("interpreter", "")
             use_uv = self.command_config.get("useUv", False)
 
             if interpreter == "python":
                 if use_uv:
-                    return "uv"
+                    # uv run <script>
+                    return f"uv run {executable}"
                 else:
-                    return "python" if platform.system() != "Windows" else "python.exe"
+                    cmd = "python" if platform.system() != "Windows" else "python.exe"
+                    return f"{cmd} {executable}"
             elif interpreter == "Rscript":
-                return "Rscript"
+                return f"Rscript {executable}"
             elif interpreter in ("bash", "sh"):
-                return interpreter
+                return f"{interpreter} {executable}"
             else:
                 return executable
 
@@ -181,9 +212,15 @@ class CommandPipeline:
 
             elif param_type == "value":
                 if value is not None and value != "":
-                    # Quote the value if it contains spaces
-                    if isinstance(value, str) and (" " in value or "\t" in value):
-                        flags.extend([flag, self._quote_value(value)])
+                    # Handle lists (e.g., multiple input files)
+                    if isinstance(value, list):
+                        # Add flag once, then all values
+                        flags.append(flag)
+                        flags.extend([str(v) for v in value])
+                    # Handle strings
+                    elif isinstance(value, str):
+                        flags.extend([flag, value])
+                    # Handle other types
                     else:
                         flags.extend([flag, str(value)])
 

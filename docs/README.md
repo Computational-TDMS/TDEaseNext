@@ -1,163 +1,144 @@
-# TDEase 文档
+# TDEase 文档导航
 
-## 📚 文档导航
+**版本**: 2.0 (新架构)
+**更新日期**: 2026-03-02
 
-欢迎来到 TDEase 质谱数据分析工作流平台文档！
-
-### 快速开始
-
-- [项目 README](../README.md) - 项目概述和快速开始指南
-- [开发指南](../CLAUDE.md) - AI 和开发者核心参考文档
-- [架构文档](ARCHITECTURE.md) - 系统架构总览
-- [开发路线图](ROADMAP.md) - 项目进度和规划
+## 快速开始
 
 ### 核心文档
 
-#### 📖 [系统架构](ARCHITECTURE.md)
-完整的系统架构说明，包括：
-- 架构概述和演进历史
-- 技术栈介绍
-- 系统架构图和数据流
-- 核心组件说明
-- 执行流程详解
+| 文档 | 说明 |
+|------|------|
+| [系统架构](ARCHITECTURE.md) | 新架构总览 - Command Pipeline, UnifiedWorkspaceManager, Tool Definition Schema |
+| [API 文档](api/endpoints.md) | RESTful API 端点 - 工作流执行、工具管理、可视化 API |
+| [API 使用示例](API_USAGE_NEW_ARCHITECTURE.md) | 新架构 API 调用示例（Python/cURL） |
 
-#### 🗺️ [开发路线图](ROADMAP.md)
-项目发展计划，包括：
-- 已完成功能列表
-- 进行中的工作
-- 短期/中期/长期计划
-- 发布计划和时间表
-- 技术债务清单
+### 使用指南
 
-#### 🔌 [API 文档](api/)
-- [端点文档](api/endpoints.md) - RESTful API 端点说明
-  - 工作流管理 API
-  - 执行管理 API
-  - 工具管理 API
-  - 文件管理 API
-  - 批量配置 API
-
-#### 📖 [使用指南](guides/)
-- [工作流格式说明](guides/workflow-format.md) - VueFlow 工作流 JSON 格式
-- [工作空间管理](guides/workspace-management.md) - 文件传递和路径管理
-- [工具注册指南](guides/tool-registration.md) - 如何添加新工具
-
-### 详细文档
-
-#### 数据库设计
-- [DATABASE_DESIGN](current%20status/DATABASE_DESIGN.md) - 数据库架构和表结构
-
-#### 前后端交互
-- [前后端交互分析](current%20status/%E5%89%8D%E5%90%8E%E7%AB%AF%E4%BA%A4%E4%BA%92%E5%88%86%E6%9E%90.md) - 前后端交互逻辑和已知问题
-
-#### 实现计划
-- [节点执行与同步](plan/node_execution_and_sync.md) - Hot Run 模式和实时同步方案
-
-#### 归档文档
-- [phase3 计划](archive/phase3.md) - 旧的开发计划（已整合到 ROADMAP.md）
-- [phase4 计划](archive/phase4.md) - 旧的开发计划（已整合到 ROADMAP.md）
-- [后端重构](archive/%E5%90%8E%E7%AB%AF%E9%87%8D%E6%9E%84.md) - 后端重构文档（已完成）
+| 文档 | 说明 |
+|------|------|
+| [工作流格式](guides/workflow-format.md) | VueFlow 工作流 JSON 格式 |
+| [工作空间管理](guides/workspace-management.md) | 文件传递和路径管理 |
+| [工具注册](guides/tool-registration.md) | 如何添加新工具 |
 
 ---
 
-## 🎯 按主题查找
+## 新架构 (2.0) 核心变化
 
-### 工作流相关
-- [工作流格式说明](guides/workflow-format.md) - JSON 格式定义
-- [工作流管理 API](api/endpoints.md#工作流管理-api) - CRUD 操作
-- [工作流执行 API](api/endpoints.md#工作流执行-api) - 执行和监控
+### 1. Tool Definition Schema
+- **文件**: `config/tool-schema.json`
+- **工具定义**: `config/tools/*.json`
+- **前端加载**: `GET /api/tools/schemas`
+- **好处**: 前后端共享单一数据源，消除定义不一致
 
-### 工具相关
-- [工具注册指南](guides/tool-registration.md) - 添加新工具
-- [工具管理 API](api/endpoints.md#工具管理-api) - 工具 CRUD 操作
-- [工具定义示例](guides/tool-registration.md#工具示例) - 参考配置
+### 2. Command Pipeline
+- **文件**: `app/core/executor/command_pipeline.py`
+- **5步流程**: Filter → Executable → Output → Parameters → Positional
+- **好处**: 统一参数过滤，无类型分支逻辑
 
-### 执行相关
-- [执行流程](ARCHITECTURE.md#执行流程) - 如何执行工作流
-- [执行管理 API](api/endpoints.md#执行管理-api) - 状态查询和控制
-- [节点执行与同步](plan/node_execution_and_sync.md) - Hot Run 模式
+### 3. UnifiedWorkspaceManager
+- **文件**: `app/services/unified_workspace_manager.py`
+- **样品存储**: `samples.json` (文件系统，非数据库)
+- **目录结构**: `users/{user_id}/workspaces/{workspace_id}/`
+- **好处**: 工作区级别样品共享，结构化数据
 
-### 文件相关
-- [工作空间管理](guides/workspace-management.md) - 路径和文件传递
-- [文件管理 API](api/endpoints.md#文件管理-api) - 上传下载操作
+### 4. 新 API 格式
+```json
+// 旧格式（已弃用）
+{
+  "workflow": {...},
+  "parameters": {
+    "sample_context": {"sample": "sample1"}
+  }
+}
 
----
-
-## 🚀 快速链接
-
-### 新手入门
-1. 阅读 [项目 README](../README.md) 了解项目
-2. 查看 [系统架构](ARCHITECTURE.md) 理解设计
-3. 学习 [工具注册指南](guides/tool-registration.md) 添加工具
-4. 参考 [API 文档](api/endpoints.md) 开发集成
-
-### 开发者
-1. 查看 [开发指南](../CLAUDE.md) 了解代码规范
-2. 阅读 [开发路线图](ROADMAP.md) 了解任务优先级
-3. 研究 [架构文档](ARCHITECTURE.md#核心组件) 理解组件
-4. 参考 [数据库设计](current%20status/DATABASE_DESIGN.md) 设计数据模型
-
-### 贡献者
-1. 查看 [开发路线图](ROADMAP.md#贡献指南) 了解贡献流程
-2. 查看 [TODO.md](../TODO.md) 寻找任务
-3. 阅读 [前后端交互分析](current%20status/%E5%89%8D%E5%90%8E%E7%AB%AF%E4%BA%A4%E4%BA%92%E5%88%86%E6%9E%90.md#%E5%B7%B2%E7%9F%A5%E9%97%AE%E9%A2%98) 找到问题
-4. 参考 [已知问题](../CLAUDE.md#%F0%9F%90%9B-known-issues--solutions) 解决 Bug
+// 新格式
+{
+  "workflow_id": "wf_test_full",
+  "user_id": "test_user",
+  "workspace_id": "test_workspace",
+  "sample_ids": ["sample1"]
+}
+```
 
 ---
 
-## 📝 文档结构
+## 按主题查找
+
+### 工作流执行
+
+1. **了解架构**: [ARCHITECTURE.md](ARCHITECTURE.md)
+2. **调用 API**: [api/endpoints.md](api/endpoints.md) - 工作流执行 API
+3. **使用示例**: [API_USAGE_NEW_ARCHITECTURE.md](API_USAGE_NEW_ARCHITECTURE.md)
+4. **格式说明**: [guides/workflow-format.md](guides/workflow-format.md)
+
+### 工具开发
+
+1. **Schema 定义**: [ARCHITECTURE.md](ARCHITECTURE.md#1-tool-definition-schema-d1)
+2. **注册工具**: [guides/tool-registration.md](guides/tool-registration.md)
+3. **工具 API**: [api/endpoints.md](api/endpoints.md#3-工具管理-api)
+
+### 样品管理
+
+1. **架构说明**: [ARCHITECTURE.md](ARCHITECTURE.md#3-structured-samples-d3)
+2. **工作区管理**: [guides/workspace-management.md](guides/workspace-management.md)
+3. **Workspace API**: [api/endpoints.md](api/endpoints.md#5-工作区管理-api)
+
+### 可视化
+
+1. **可视化节点**: [ARCHITECTURE.md](ARCHITECTURE.md#5-可视化节点扩展点-d5)
+2. **数据 API**: [api/endpoints.md](api/endpoints.md#4-可视化-api-新增)
+
+---
+
+## 测试环境
+
+**测试配置**:
+- 用户: `test_user`
+- 工作区: `test_workspace`
+- 样品: `sample1`
+- 位置: `data/users/test_user/workspaces/test_workspace/samples.json`
+
+**快速测试**:
+```bash
+# 启动后端
+cd D:/Projects/TDEase-Backend
+python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+
+# 执行测试工作流
+curl -X POST "http://localhost:8000/api/workflows/execute" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "workflow_id": "wf_test_full",
+    "user_id": "test_user",
+    "workspace_id": "test_workspace",
+    "sample_ids": ["sample1"]
+  }'
+```
+
+---
+
+## 文档结构
 
 ```
 docs/
-├── README.md                      # 本文档 - 文档导航
-├── ARCHITECTURE.md                # 系统架构总览
-├── ROADMAP.md                     # 开发路线图
-├── api/                           # API 文档
-│   └── endpoints.md               # API 端点说明
-├── guides/                        # 使用指南
-│   ├── workflow-format.md         # 工作流格式
-│   ├── workspace-management.md    # 工作空间管理
-│   └── tool-registration.md       # 工具注册
-├── current status/                # 当前实现状态
-│   ├── backend.md                 # 后端架构详细说明
-│   ├── DATABASE_DESIGN.md         # 数据库设计
-│   ├── workflowjson_define.md     # 工作流JSON格式
-│   ├── 前后端交互分析.md           # 前后端交互
-│   ├── api.md                     # API文档（已移至api/endpoints.md）
-│   └── workspace.md               # 工作空间（已移至guides/）
-├── plan/                          # 实施计划
-│   └── node_execution_and_sync.md # 节点执行与同步
-└── archive/                       # 归档文档
-    ├── phase3.md                  # 旧计划文档
-    ├── phase4.md                  # 旧计划文档
-    └── 后端重构.md                 # 重构文档
+├── README.md                          # 本文档
+├── ARCHITECTURE.md                    # 系统架构（新架构）
+├── API_USAGE_NEW_ARCHITECTURE.md      # API 使用示例
+├── api/
+│   └── endpoints.md                   # API 端点（新架构）
+├── guides/
+│   ├── workflow-format.md             # 工作流格式
+│   ├── workspace-management.md        # 工作空间管理
+│   └── tool-registration.md           # 工具注册
+├── ROADMAP.md                         # 开发路线图
+└── archive/                           # 归档文档
 ```
 
 ---
 
-## 🔍 搜索提示
+## 相关链接
 
-### 我想...
-
-- **了解项目**: 从 [项目 README](../README.md) 和 [系统架构](ARCHITECTURE.md) 开始
-- **添加新工具**: 阅读 [工具注册指南](guides/tool-registration.md)
-- **调用 API**: 查看 [API 文档](api/endpoints.md)
-- **理解执行流程**: 参考 [执行流程](ARCHITECTURE.md#执行流程) 和 [节点执行与同步](plan/node_execution_and_sync.md)
-- **设计工作流**: 学习 [工作流格式说明](guides/workflow-format.md)
-- **管理文件**: 查看 [工作空间管理](guides/workspace-management.md)
-- **查找已知问题**: 参考 [已知问题](../CLAUDE.md#%F0%9F%90%9B-known-issues--solutions)
-- **贡献代码**: 查看 [开发路线图](ROADMAP.md#贡献指南) 和 [开发指南](../CLAUDE.md)
-
----
-
-## 📧 获取帮助
-
-- 提交 Issue: [GitHub Issues](https://github.com/your-org/TDEase-Backend/issues)
-- 查看文档: 在线文档（本站点）
-- 讨论交流: [GitHub Discussions](https://github.com/your-org/TDEase-Backend/discussions)
-
----
-
-## 📄 许可证
-
-MIT License - 详见 [LICENSE](../LICENSE) 文件
+- **项目 README**: [../README.md](../README.md)
+- **开发指南**: [../CLAUDE.md](../CLAUDE.md)
+- **变更追踪**: [../openspec/changes/redesign-cmd-and-sample-management/](../openspec/changes/redesign-cmd-and-sample-management/)

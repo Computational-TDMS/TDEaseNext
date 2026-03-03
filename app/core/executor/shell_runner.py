@@ -93,7 +93,8 @@ def _run_with_capture(
             env=_build_env(),
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
-            text=True,
+            encoding='utf-8',
+            errors='replace',
             bufsize=1,
         )
     else:
@@ -103,7 +104,8 @@ def _run_with_capture(
             cwd=workdir,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
-            text=True,
+            encoding='utf-8',
+            errors='replace',
             bufsize=1,
         )
 

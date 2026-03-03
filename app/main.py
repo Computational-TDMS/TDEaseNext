@@ -42,6 +42,10 @@ try:
     workspace = import_module("app.api.workspace")
 except Exception:
     workspace = None
+try:
+    visualization = import_module("app.api.visualization")
+except Exception:
+    visualization = None
 from app.core.websocket import ConnectionManager
 
 # Configure logging
@@ -138,6 +142,8 @@ if tool_schemas is not None:
     app.include_router(tool_schemas.router, prefix="/api/tools", tags=["tools"])
 if workspace is not None:
     app.include_router(workspace.router, prefix="/api", tags=["workspace"])
+if visualization is not None:
+    app.include_router(visualization.visualization_router, tags=["visualization"])
 
 # WebSocket route
 @app.websocket("/ws/{workflow_id}")

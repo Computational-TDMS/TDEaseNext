@@ -19,15 +19,18 @@ from src.workflow.validator import validate_placeholders
 logger = logging.getLogger(__name__)
 
 
-def _resolve_output_paths(
-    node_id: str,
-    tool_id: str,
-    tool_info: Dict[str, Any],
-    sample_ctx: Dict[str, str],
-    workspace: Path,
-) -> List[Path]:
-    """根据 output_patterns 和 sample_ctx 解析输出路径"""
+def _get_output_patterns(tool_info: Dict[str, Any]) -> List[Dict[str, str]]:
+    """从工具定义获取输出模式：优先 output_patterns，否则从 ports.outputs 推导（新 Schema）"""
     patterns = tool_info.get("output_patterns", [])
+    if patterns:
+        return patterns
+    outputs = tool_info.get("ports", {}).get("outputs", [])
+    for o in outputs:
+        if isinstance(o, dict) and o.get("pattern"):
+            patterns.append({
+                "pattern": o["pattern"],
+                "handle": o.get("handle") or o.get("id", "output"),
+            })
     if not patterns and tool_info.get("outputs"):
         for o in tool_info["outputs"]:
             if isinstance(o, dict) and o.get("pattern"):
@@ -35,6 +38,18 @@ def _resolve_output_paths(
                     "pattern": o["pattern"],
                     "handle": o.get("handle") or o.get("id", "output"),
                 })
+    return patterns
+
+
+def _resolve_output_paths(
+    node_id: str,
+    tool_id: str,
+    tool_info: Dict[str, Any],
+    sample_ctx: Dict[str, str],
+    workspace: Path,
+) -> List[Path]:
+    """根据 output_patterns / ports.outputs 和 sample_ctx 解析输出路径"""
+    patterns = _get_output_patterns(tool_info)
     if not patterns:
         return []
     result = []
@@ -53,6 +68,17 @@ def _resolve_output_paths(
     return result
 
 
+def _get_positional_input_ids(tool_info: Dict[str, Any]) -> List[str]:
+    """获取位置参数的端口 ID 顺序：优先 positional_params，否则从 ports.inputs 推导（新 Schema）"""
+    positional = tool_info.get("positional_params", [])
+    if positional:
+        return positional
+    inputs = tool_info.get("ports", {}).get("inputs", [])
+    pos_inputs = [i for i in inputs if isinstance(i, dict) and i.get("positional", False)]
+    pos_inputs.sort(key=lambda x: x.get("positionalOrder", 0))
+    return [i.get("id", "") for i in pos_inputs if i.get("id")]
+
+
 def _resolve_input_paths(
     node_id: str,
     edges: List[Dict],
@@ -63,14 +89,16 @@ def _resolve_input_paths(
     completed_outputs: Dict[str, List[Path]],
     target_tool_id: str = "",
 ) -> List[Path]:
-    """根据边和上游节点输出解析输入路径。若有 positional_params 则按该顺序排列。"""
+    """根据边和上游节点输出解析输入路径。若有 positional 端口则按 positionalOrder 排列。"""
     param_to_path: Dict[str, Path] = {}
     for e in edges:
         if e.get("target") != node_id:
             continue
         src_id = e.get("source")
-        src_handle = (e.get("sourceHandle") or "").replace("output-", "")
-        tgt_handle = (e.get("targetHandle") or "").replace("input-", "")
+        src_handle_raw = e.get("sourceHandle") or ""
+        src_handle = src_handle_raw.replace("output-", "") if src_handle_raw else ""
+        tgt_handle_raw = e.get("targetHandle") or ""
+        tgt_handle = tgt_handle_raw.replace("input-", "") if tgt_handle_raw else ""
         if not src_id or src_id not in completed_outputs:
             continue
         src_outputs = completed_outputs[src_id]
@@ -78,21 +106,21 @@ def _resolve_input_paths(
         src_data = src_node.get("data", {})
         src_tool = src_data.get("type", "")
         src_info = tools_registry.get(src_tool, {})
-        patterns = src_info.get("output_patterns", [])
+        patterns = _get_output_patterns(src_info)
         if not patterns:
             if tgt_handle and src_outputs:
                 param_to_path[tgt_handle] = src_outputs[0]
             continue
-        for p in patterns:
+        for idx, p in enumerate(patterns):
             h = p.get("handle", "") if isinstance(p, dict) else ""
-            if not src_handle or h == src_handle:
-                idx = patterns.index(p) if isinstance(patterns[0], dict) else 0
+            if not src_handle or h == src_handle or (not h and idx == 0):
                 if idx < len(src_outputs) and tgt_handle:
                     param_to_path[tgt_handle] = src_outputs[idx]
                 break
-    positional = tools_registry.get(target_tool_id, {}).get("positional_params", [])
-    if positional:
-        return [param_to_path[p] for p in positional if p in param_to_path]
+    target_info = tools_registry.get(target_tool_id, {})
+    positional_ids = _get_positional_input_ids(target_info)
+    if positional_ids:
+        return [param_to_path[pid] for pid in positional_ids if pid in param_to_path]
     return list(param_to_path.values())
 
 
@@ -132,7 +160,8 @@ class WorkflowService:
         from src.workflow.validator import WorkflowValidator
 
         wf = WorkflowNormalizer().normalize(workflow_json)
-        vres = WorkflowValidator().validate(wf)
+        skip_path_check = dryrun or simulate
+        vres = WorkflowValidator().validate(wf, skip_path_exists=skip_path_check)
         if vres.get("errors"):
             return {"status": "failed", "error": "; ".join(e.get("message", "") for e in vres["errors"])}
 
@@ -173,6 +202,11 @@ class WorkflowService:
                 nid, edges, nodes_map, self.tools, c.sample_context, c.workspace_path, completed_outputs,
                 target_tool_id=tool_id,
             )
+            
+            # 对于 data_loader，统一使用前端/context 传入的 sample 作为输出文件名，不兜底 basename
+            if tool_id == "data_loader":
+                params_node = {**params_node, "sample_name": c.sample_context.get("sample", "")}
+            
             return TaskSpec(
                 node_id=nid,
                 tool_id=tool_id,

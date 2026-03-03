@@ -1,0 +1,19 @@
+{
+  "version": "1.0",
+  "workspace_id": "test_workspace",
+  "samples": {
+    "sample1": {
+      "id": "sample1",
+      "name": "Sample 1",
+      "description": "Test sample for workflow execution",
+      "context": {
+        "sample": "sample1",
+        "fasta_filename": "UniProt_sorghum_focus1"
+      },
+      "data_paths": {
+        "raw": "data/raw/Sorghum-Histone0810162L20.raw",
+        "fasta": "data/fasta/UniProt_sorghum_focus1.fasta"
+      }
+    }
+  }
+}

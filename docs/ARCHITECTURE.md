@@ -1,8 +1,12 @@
 # TDEase 系统架构
 
-## 📋 目录
+**更新日期**: 2026-03-02
+**版本**: 2.0 (新架构)
+
+## 目录
 
 - [架构概述](#架构概述)
+- [新架构核心变化](#新架构核心变化)
 - [技术栈](#技术栈)
 - [系统架构图](#系统架构图)
 - [数据流](#数据流)
@@ -16,25 +20,123 @@
 
 TDEase 采用前后端分离的架构设计，使用自研 FlowEngine + ShellRunner 作为工作流执行引擎，实现质谱数据处理工具的编排和执行。
 
-### 核心架构特点
+**新架构（2.0）核心特点**：
+1. **Schema-Driven**: Tool Definition Schema 作为单一数据源
+2. **Command Pipeline**: 5步管道构建命令，消除分支逻辑
+3. **Structured Samples**: samples.json 结构化样品管理
+4. **Workspace Hierarchy**: users → workspaces → samples 层级结构
 
-1. **前后端分离**：前端 Vue.js + Tauri，后端 FastAPI
-2. **Node-based 执行**：FlowEngine 遍历 DAG，按节点调度；LocalExecutor + ShellRunner 执行命令
-3. **节点级别跟踪**：每个前端节点对应执行状态，支持细粒度监控
-4. **数据库驱动**：ExecutionStore 持久化执行状态，支持断点续传 (resume)
-5. **跨平台支持**：Windows/Linux 全平台兼容
+---
 
-### 架构演进
+## 新架构核心变化
 
-**旧架构（已弃用）**：
-```
-Frontend JSON → Compiler → Snakefile + config.yaml → CLI subprocess → Snakemake
+### 1. Tool Definition Schema (D1)
+
+
+**新方式**：统一的 Tool Definition Schema
+```json
+{
+  "id": "topfd",
+  "executionMode": "native",
+  "command": {"executable": "topfd"},
+  "ports": {
+    "inputs": [{"id": "ms2_file", "dataType": "ms2", "required": true}],
+    "outputs": [{"id": "ms1_file", "pattern": "{sample}_ms1.msalign"}]
+  },
+  "parameters": {
+    "mass": {"flag": "-m", "type": "value", "default": "50000"}
+  }
+}
 ```
 
-**当前架构**：
+**好处**：
+- 前后端共享同一Schema
+- 消除定义不一致
+- 支持多种执行模式
+
+### 2. Command Pipeline (D2)
+
+**旧方式**：分支逻辑
+```python
+if tool_type == "command":
+    # 分支逻辑...
+elif tool_type == "script":
+    # 不同分支...
 ```
-Frontend JSON → WorkflowNormalizer → WorkflowService → FlowEngine → LocalExecutor → ShellRunner (subprocess + conda run)
+
+**新方式**：5步管道
+```python
+CommandPipeline(tool_def).build(params, inputs, output_dir)
+# Step 1: Filter (移除null/empty/"none")
+# Step 2: Executable (解析可执行命令)
+# Step 3: Output Flag (添加输出标志)
+# Step 4: Parameters (构建参数标志)
+# Step 5: Positional (添加位置参数)
 ```
+
+**好处**：
+- 统一参数过滤
+- 无类型分支
+- 易于扩展新执行模式
+
+### 3. Structured Samples (D3)
+
+**旧方式**：内联扁平字典
+```json
+{
+  "parameters": {
+    "sample_context": {
+      "sample": "sample1",
+      "fasta_filename": "db"
+    }
+  }
+}
+```
+
+**新方式**：samples.json 结构化存储
+```json
+{
+  "samples": {
+    "sample1": {
+      "id": "sample1",
+      "context": {
+        "sample": "sample1",
+        "fasta_filename": "UniProt_sorghum_focus1"
+      },
+      "data_paths": {
+        "raw": "data/raw/file.raw",
+        "fasta": "data/fasta/db.fasta"
+      }
+    }
+  }
+}
+```
+
+**好处**：
+- 工作区级别共享
+- 支持元数据和路径
+- 自动推导占位符
+
+### 4. 前端参数渲染 (D4)
+
+**旧方式**：前端硬编码参数类型
+```javascript
+if (param.type === "boolean")
+  // 渲染开关
+```
+
+**新方式**：从 Tool Definition 读取
+```vue
+<template v-for="(p, key) in parameters">
+  <el-input v-if="p.type === 'value'" />
+  <el-switch v-else-if="p.type === 'boolean'" />
+  <el-select v-else-if="p.type === 'choice'" />
+</template>
+```
+
+**好处**：
+- 前端无需硬编码
+- 工具定义即文档
 
 ---
 
@@ -43,8 +145,10 @@ Frontend JSON → WorkflowNormalizer → WorkflowService → FlowEngine → Loca
 ### 后端
 - **FastAPI** - 现代 Web 框架
 - **FlowEngine** - 轻量级 DAG 调度器
+- **CommandPipeline** - 5步命令构建管道
+- **UnifiedWorkspaceManager** - 工作区和样品管理
 - **ShellRunner** - Shell 命令执行（subprocess + conda run）
-- **SQLite** - 轻量级数据库（可扩展到 PostgreSQL）
+- **SQLite** - 轻量级数据库
 - **Pydantic** - 数据验证
 - **WebSocket** - 实时通信
 
@@ -56,7 +160,7 @@ Frontend JSON → WorkflowNormalizer → WorkflowService → FlowEngine → Loca
 
 ### 执行环境
 - **Conda** - 通过 `conda run` 激活工具环境
-- **Docker** - 可选，用于 msconvert_docker 等容器化工具
+- **Docker** - 可选，用于容器化工具
 
 ---
 
@@ -68,16 +172,22 @@ Frontend JSON → WorkflowNormalizer → WorkflowService → FlowEngine → Loca
 graph TB
     subgraph Frontend["前端层 (Vue.js + Tauri)"]
         Editor[工作流编辑器<br/>VueFlow]
-        Toolbar[工具栏]
+        PropertyPanel[属性面板<br/>PropertyPanel]
         Status[状态监控]
     end
 
     subgraph API["API层 (FastAPI)"]
         WF_API[Workflow API]
         EXEC_API[Execution API]
-        TOOL_API[Tool API]
-        FILE_API[File API]
+        TOOL_API[Tool Schema API]
+        VIS_API[Visualization API]
         WS[WebSocket]
+    end
+
+    subgraph Core["核心层"]
+        ToolRegistry[ToolRegistry<br/>工具定义加载]
+        Pipeline[CommandPipeline<br/>5步命令构建]
+        WorkspaceMgr[UnifiedWorkspaceManager<br/>工作区样品管理]
     end
 
     subgraph Services["服务层"]
@@ -96,148 +206,262 @@ graph TB
         WF[(workflows)]
         EXEC[(executions)]
         NODE[(execution_nodes)]
-        TOOL[(tools)]
-        FILE[(files)]
+    end
+
+    subgraph Files["文件系统"]
+        Samples[samples.json<br/>样品定义]
+        Tools[config/tools/*.json<br/>工具定义]
+        Workspace[工作区目录结构]
     end
 
     Editor --> WF_API
-    Toolbar --> TOOL_API
+    PropertyPanel --> TOOL_API
     Status --> EXEC_API
     Status --> WS
 
+    TOOL_API --> ToolRegistry
+    ToolRegistry --> Tools
+
     WF_API --> Normalizer
     WF_API --> WFService
-    Normalizer --> WFService
+    WFService --> WorkspaceMgr
+    WorkspaceMgr --> Samples
+
+    WFService --> Pipeline
+    Pipeline --> LocalExecutor
     WFService --> FlowEngine
     FlowEngine --> LocalExecutor
     LocalExecutor --> ShellRunner
+
     WFService --> ExecStore
 
     WF_API <--> WF
     EXEC_API <--> EXEC
     EXEC_API <--> NODE
-    TOOL_API <--> TOOL
-    FILE_API <--> FILE
     ExecStore <--> EXEC
     ExecStore <--> NODE
 
     style Frontend fill:#e1f5ff
     style API fill:#fff4e1
+    style Core fill:#f3e5f5
     style Services fill:#f0f0f0
     style Database fill:#e8f5e9
     style Execution fill:#fce4ec
+    style Files fill:#fff3e0
 ```
 
-### 数据流架构
+### 新架构数据流
 
 ```mermaid
 sequenceDiagram
-    participant F as 前端编辑器
-    participant API as Workflow API
-    participant Norm as WorkflowNormalizer
-    participant WFS as WorkflowService
-    participant FE as FlowEngine
-    participant LE as LocalExecutor
-    participant ES as ExecutionStore
+    participant F as 前端
+    participant API as API层
+    participant Reg as ToolRegistry
+    participant WS as UnifiedWorkspaceManager
+    participant Pipe as CommandPipeline
+    participant Exec as LocalExecutor
 
-    Note over F,ES: 1. 工作流创建/更新
-    F->>API: POST /api/workflows (保存工作流)
-    API->>ES: 保存 workflow (vueflow_data)
-    ES-->>API: 确认保存
-    API-->>F: 返回工作流ID
+    Note over F,Exec: 1. 加载工具定义
+    F->>API: GET /api/tools/schemas
+    API->>Reg: load_tools()
+    Reg-->>API: Tool Definitions
+    API-->>F: Schema + Tools
 
-    Note over F,LE: 2. 工作流执行
+    Note over F,Exec: 2. 执行工作流
     F->>API: POST /api/workflows/execute
-    API->>ES: 创建 execution 和 execution_nodes
+    Note over F: {workflow_id, user_id,<br/>workspace_id, sample_ids}
 
-    API->>Norm: normalize(workflow_json)
-    Norm-->>API: 规范化后的工作流
+    API->>WS: get_sample_context()
+    WS-->>API: 样品上下文
 
-    API->>WFS: execute_workflow(workflow_json, ...)
-    WFS->>FE: run()
+    API->>Pipe: build_command(tool_def,<br/>params, inputs, output_dir)
+    Pipe->>Pipe: 1. Filter empty params
+    Pipe->>Pipe: 2. Resolve executable
+    Pipe->>Pipe: 3. Add output flag
+    Pipe->>Pipe: 4. Build param flags
+    Pipe->>Pipe: 4b. Add --params JSON (useParamsJson)
+    Pipe->>Pipe: 5. Add positional args
+    Pipe-->>API: Command parts
 
-    Note over FE,LE: 3. 执行过程中
-    FE->>FE: 拓扑排序 DAG
-    loop 每个就绪节点
-        FE->>LE: execute(TaskSpec)
-        LE->>LE: build_command + run_shell
-        LE-->>FE: 完成
-        FE->>ES: update_node_status(node_id, status)
-    end
-
-    WFS-->>API: 返回执行结果
-
-    Note over F,ES: 4. 状态查询
-    F->>API: GET /api/executions/{id}
-    API->>ES: get_nodes(execution_id)
-    ES-->>API: 节点状态列表
-    API-->>F: 返回执行状态和节点状态
+    API->>Exec: execute(command, workdir)
+    Exec-->>API: 执行结果
+    API-->>F: Execution ID + Status
 ```
 
 ---
 
 ## 数据流
 
-### 工作流执行流程
+### 工作流执行流程（新架构）
 
-1. **前端发送工作流 JSON** → `POST /api/workflows/execute`
-2. **规范化验证** → WorkflowNormalizer + WorkflowValidator 验证 JSON 格式
-3. **执行准备** → 创建 execution 记录和 execution_nodes 记录
-4. **调度执行** → FlowEngine 拓扑遍历 DAG，按依赖顺序调度节点
-5. **节点执行** → LocalExecutor 通过 ShellRunner 执行命令（支持 Conda）
-6. **状态持久化** → ExecutionStore 更新节点状态到 SQLite
-7. **断点续传** → resume 模式下检查输出文件存在则跳过已完成节点
-8. **状态查询** → 前端轮询 `GET /api/executions/{id}` 获取状态
+1. **前端加载工具定义** → `GET /api/tools/schemas`
+2. **前端发送执行请求** → `POST /api/workflows/execute`
+   - 请求体: `{workflow_id, user_id, workspace_id, sample_ids}`
+3. **后端加载样品上下文** → `UnifiedWorkspaceManager.get_sample_context()`
+   - 从 `samples.json` 读取结构化样品数据
+   - 自动推导占位符（basename, dir, extension等）
+4. **命令构建** → `CommandPipeline.build()`
+   - Step 1: 过滤空参数（null/empty/"none"）
+   - Step 2: 解析可执行命令（native/script/uv）
+   - Step 3: 添加输出标志（如果 flagSupported）
+   - Step 4: 构建参数标志（value/boolean/choice）
+   - Step 4b: 若 useParamsJson，追加 --params JSON（供 data_loader 等传递 sample_name）
+   - Step 5: 添加位置参数（按 positionalOrder）
+5. **调度执行** → FlowEngine 拓扑遍历 DAG
+6. **节点执行** → LocalExecutor 通过 ShellRunner 执行
+7. **状态持久化** → ExecutionStore 更新到 SQLite
+8. **状态查询** → 前端查询 `GET /api/executions/{id}`
+9. **执行监控** → 前端通过 WebSocket (`/ws/executions/{id}`) 实时接收状态与日志；若 WebSocket 不可用则降级为每 2 秒轮询。当状态为 `completed`/`failed`/`cancelled` 时自动停止监控。
 
 ---
 
 ## 核心组件
 
-### 1. WorkflowNormalizer (`src/workflow/normalizer.py`)
-**职责**：规范化前端工作流 JSON 为统一格式
+### 1. ToolRegistry (`app/services/tool_registry.py`)
+
+**职责**：加载和管理工具定义
+
+**主要方法**：
+- `load_tools()` - 从 `config/tools/*.json` 加载所有工具
+- `get_tool(tool_id)` - 获取单个工具定义
+- `validate_tool(tool_def)` - 验证工具Schema
+
+**工具定义格式**：
+```json
+{
+  "id": "tool_id",
+  "name": "Tool Name",
+  "version": "1.0.0",
+  "executionMode": "native|script|docker|interactive",
+  "command": {
+    "executable": "command_name",
+    "interpreter": "python"  // for script mode
+  },
+  "ports": {
+    "inputs": [...],
+    "outputs": [...]
+  },
+  "parameters": {...},
+  "output": {
+    "flagSupported": false  // for TopPIC/TopFD
+  }
+}
+```
+
+### 2. CommandPipeline (`app/core/executor/command_pipeline.py`)
+
+**职责**：5步命令构建管道
+
+**主要方法**：
+- `build(param_values, input_files, output_dir)` - 构建完整命令
+- `_filter_empty_params()` - Step 1: 过滤空参数
+- `_resolve_executable()` - Step 2: 解析可执行命令
+- `_build_output_flag()` - Step 3: 构建输出标志
+- `_build_parameter_flags()` - Step 4: 构建参数标志
+- Step 4b: 若工具定义 `useParamsJson: true`，追加 `--params` JSON
+- `_build_positional_args()` - Step 5: 构建位置参数
+
+LocalExecutor 将 `spec.input_paths` 按 positionalOrder 映射到端口 ID，保证与 `_resolve_input_paths` 返回顺序一致。
+
+**Sample 传递与命令执行细节**：
+- 执行入口 `parameters.sample_context` 来自 API 的 `get_sample_context()`；**sample 统一使用 sample_id / context 显式值，不按 raw 文件名 basename 兜底**，由前端保证正确。
+- `build_task_spec` 对 data_loader 注入 `sample_name = sample_context["sample"]`，数据导入第一步统一使用该名称写出文件；后续工具若不支持指定输出文件名则自行统配。
+- data_loader 工具定义 `useParamsJson: true`，CommandPipeline 会追加 `--params` JSON；内部键 `tool_type`/`type` 已过滤。
+- 下游节点输入路径由 `_resolve_input_paths` 从 `completed_outputs[上游]` 按 edge 的 targetHandle 与 positionalOrder 传入 LocalExecutor。
+
+### 3. UnifiedWorkspaceManager (`app/services/unified_workspace_manager.py`)
+
+**职责**：工作区和样品管理
+
+**主要方法**：
+- `get_sample_context(user_id, workspace_id, sample_id)` - 获取样品上下文
+- `get_workspace_path(user_id, workspace_id)` - 获取工作区路径
+- `list_samples(user_id, workspace_id)` - 列出工作区所有样品
+
+**目录结构**：
+```
+data/
+└── users/
+    └── {user_id}/
+        └── workspaces/
+            └── {workspace_id}/
+                ├── samples.json           # 样品定义
+                ├── workflows/             # 工作流定义
+                ├── executions/            # 执行记录
+                └── data/                  # 数据文件
+                    ├── raw/
+                    ├── fasta/
+                    └── reference/
+```
+
+**samples.json 格式**：
+```json
+{
+  "samples": {
+    "sample1": {
+      "id": "sample1",
+      "name": "Sample 1",
+      "description": "Test sample",
+      "context": {
+        "sample": "sample1",
+        "fasta_filename": "UniProt_sorghum_focus1"
+      },
+      "data_paths": {
+        "raw": "data/raw/Sorghum-Histone0810162L20.raw",
+        "fasta": "data/fasta/UniProt_sorghum_focus1.fasta"
+      }
+    }
+  }
+}
+```
+
+### 4. WorkflowNormalizer (`src/workflow/normalizer.py`)
+
+**职责**：规范化前端工作流 JSON
 
 **主要方法**：
 - `normalize(workflow_json)` - 规范化工作流
+- 保留 `input-`/`output-` 端口前缀语义
 
-### 2. WorkflowValidator (`src/workflow/validator.py`)
-**职责**：验证工作流格式和样本配置
+### 5. WorkflowService (`app/services/workflow_service.py`)
+
+**职责**：工作流编排服务
+
+**路径解析**（新 Schema）：
+- 输出：`ports.outputs`（或兼容 `output_patterns`）→ `_resolve_output_paths`
+- 输入：`ports.inputs` 的 `positional`/`positionalOrder`（或兼容 `positional_params`）→ `_resolve_input_paths`
 
 **主要方法**：
-- `validate(workflow_v2)` - 验证工作流
-
-### 3. WorkflowService (`app/services/workflow_service.py`)
-**职责**：工作流编排服务，协调 FlowEngine 与 ExecutionStore
-
-**主要方法**：
-- `execute_workflow(workflow_json, workspace_path, ...)` - 执行工作流
+- `execute_workflow(workflow_json, workspace_path, parameters)` - 执行工作流
 - 支持 dryrun、resume、simulate 模式
+- `parameters.sample_context` 由 API 从 samples.json 注入或兼容旧格式
 
-### 4. FlowEngine (`app/core/engine/scheduler.py`)
-**职责**：DAG 调度器，拓扑遍历节点并调度执行
+### 6. FlowEngine (`app/core/engine/scheduler.py`)
+
+**职责**：DAG 调度器
 
 **主要方法**：
 - `run()` - 主执行循环
+- 拓扑排序节点
 - 维护节点状态：PENDING → READY → RUNNING → COMPLETED/FAILED/SKIPPED
 
-### 5. LocalExecutor (`app/core/executor/local.py`)
-**职责**：任务执行，从 TaskSpec 构建命令并调用 ShellRunner
+### 7. LocalExecutor (`app/core/executor/local.py`)
+
+**职责**：任务执行
 
 **主要方法**：
 - `execute(spec)` - 执行单个任务
+- 使用 `CommandPipeline.build()` 构建命令
+- 调用 `ShellRunner.run_shell()` 执行
 
-### 6. ShellRunner (`app/core/executor/shell_runner.py`)
-**职责**：Shell 命令执行，支持 Conda 环境
+### 8. ExecutionStore (`app/services/execution_store.py`)
 
-**主要方法**：
-- `run_shell(cmd, workdir, conda_env)` - 执行命令（无 Snakemake 依赖）
-
-### 7. ExecutionStore (`app/services/execution_store.py`)
-**职责**：执行状态持久化到 SQLite
+**职责**：执行状态持久化
 
 **主要方法**：
-- `create(execution_id, workflow_id, workspace_path)` - 创建执行记录
+- `create(execution_id, ...)` - 创建执行记录
 - `create_node(execution_id, node_id)` - 创建节点记录
-- `update_node_status(execution_id, node_id, status)` - 更新节点状态
+- `update_node_status(...)` - 更新节点状态
 - `get_nodes(execution_id)` - 获取所有节点状态
 
 ---
@@ -252,7 +476,7 @@ CREATE TABLE workflows (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
     description TEXT,
-    vueflow_data TEXT NOT NULL,      -- 前端 JSON 数据
+    vueflow_data TEXT NOT NULL,
     workspace_path TEXT NOT NULL,
     status TEXT DEFAULT 'created',
     created_at TEXT NOT NULL,
@@ -270,25 +494,12 @@ CREATE TABLE executions (
     start_time TEXT NOT NULL,
     end_time TEXT,
     duration INTEGER,
-    snakemake_args TEXT,  -- legacy column, kept for DB compat
-    config_overrides TEXT,
-    environment TEXT,
     workspace_path TEXT NOT NULL,
-    workflow_snapshot TEXT,  -- 工作流结构快照（仅在结构变更时保存）
+    workflow_snapshot TEXT,
     created_at TEXT NOT NULL,
     FOREIGN KEY (workflow_id) REFERENCES workflows (id)
 );
 ```
-
-**workflow_snapshot 说明**：
-- **用途**：保存执行时的工作流结构（nodes、edges），用于历史追溯和结构变更检测
-- **保存时机**：
-  - ✅ **结构变更时**：nodes/edges 变化、节点增删、连接关系变化
-  - ❌ **参数变更时**：仅修改节点 params，不保存快照
-- **好处**：
-  - 可追溯每次执行使用的确切结构
-  - 支持「从历史执行继续」功能
-  - 区分结构变更 vs 参数变更，避免不必要的快照
 
 #### execution_nodes 表
 ```sql
@@ -296,141 +507,97 @@ CREATE TABLE execution_nodes (
     id TEXT PRIMARY KEY,
     execution_id TEXT NOT NULL,
     node_id TEXT NOT NULL,
-    rule_name TEXT,
     status TEXT NOT NULL DEFAULT 'pending',
     start_time TEXT,
     end_time TEXT,
     progress INTEGER DEFAULT 0,
-    log_path TEXT,
     error_message TEXT,
     created_at TEXT NOT NULL,
     FOREIGN KEY (execution_id) REFERENCES executions (id)
 );
 ```
 
-#### tools 表
-```sql
-CREATE TABLE tools (
-    name TEXT PRIMARY KEY,
-    version TEXT,
-    description TEXT,
-    category TEXT,
-    executable_path TEXT,
-    is_available INTEGER DEFAULT 0,
-    platform_info TEXT,
-    parameters TEXT,
-    registration_data TEXT,
-    created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL
-);
-```
-
-完整的数据库设计参考：[DATABASE_DESIGN.md](current%20status/DATABASE_DESIGN.md)
-
 ---
 
 ## 执行流程
 
-### 1. 初始化阶段
+### 新架构执行示例
 
 ```python
-# 检测结构变更（vs 参数变更）
-from app.services.workflow_diff import has_structure_changed, get_last_execution_snapshot
+# 1. 前端请求执行
+POST /api/workflows/execute
+{
+  "workflow_id": "wf_test_full",
+  "user_id": "test_user",
+  "workspace_id": "test_workspace",
+  "sample_ids": ["sample1"]
+}
 
-workflow_snapshot = None
-if has_structure_changed(last_snapshot, current_workflow):
-    workflow_snapshot = json.dumps(current_workflow)  # 仅结构变更时保存
+# 2. 后端处理流程
+# app/api/workflow.py
+def execute_workflow(request):
+    # 加载样品上下文
+    manager = get_unified_workspace_manager()
+    context = manager.get_sample_context(
+        user_id, workspace_id, sample_id
+    )
+    # context = {"sample": "sample1", "fasta_filename": "UniProt_sorghum_focus1"}
 
-# 创建 execution 记录（包含快照）
-ExecutionStore.create(execution_id, workflow_id, workspace_path, workflow_snapshot)
+    # 执行工作流
+    result = workflow_service.execute_workflow(
+        workflow_json=workflow,
+        workspace_path=workspace_path,
+        sample_context=context,
+        ...
+    )
 
-# 为每个节点创建 execution_node 记录
-for node in workflow_json['nodes']:
-    ExecutionStore.create_node(execution_id, node['id'])
+# 3. WorkflowService 执行
+# app/services/workflow_service.py
+def execute_workflow(workflow_json, sample_context, ...):
+    for node in workflow_json['nodes']:
+        # 构建命令
+        tool_def = tool_registry.get_tool(node['toolId'])
+        pipeline = CommandPipeline(tool_def)
+
+        cmd_parts = pipeline.build(
+            param_values=node['paramValues'],
+            input_files=input_files,
+            output_dir=output_dir
+        )
+
+        # 执行命令
+        result = local_executor.execute(cmd_parts)
+
+    return result
+
+# 4. CommandPipeline 构建
+# app/core/executor/command_pipeline.py
+def build(self, param_values, input_files, output_dir):
+    # Step 1: Filter empty params
+    filtered = self._filter_empty_params(param_values)
+
+    # Step 2: Resolve executable
+    cmd = [self._resolve_executable()]
+
+    # Step 3: Output flag
+    if self.output_config.get("flagSupported"):
+        cmd.extend(["-o", output_dir])
+
+    # Step 4: Parameter flags
+    cmd.extend(self._build_parameter_flags(filtered))
+
+    # Step 5: Positional args
+    cmd.extend(self._build_positional_args(input_files))
+
+    return cmd
 ```
-
-### 2. 构建与调度阶段
-
-```python
-# WorkflowNormalizer.normalize() 规范化 JSON
-# FlowEngine 从 nodes + edges 构建 WorkflowGraph
-# 拓扑排序确定执行顺序
-```
-
-### 3. 执行阶段
-
-```python
-# 获取 executor plugin
-# WorkflowService.execute_workflow() 内部调用 FlowEngine.run()
-# FlowEngine 调度节点，LocalExecutor 执行，ExecutionStore 更新状态
-```
-
-### 4. 监控阶段
-
-```python
-# FlowEngine 的 on_node_state 回调更新 ExecutionStore
-# 前端通过 API 轮询 GET /api/executions/{id} 获取状态
-```
-
----
-
-## 关键设计决策
-
-### 1. 为什么自研 FlowEngine 而非 Snakemake？
-
-**优势**：
-- 轻量级，无沉重依赖
-- 完全契合 Node-based、数据库驱动的执行模型
-- 原生支持断点续传 (resume)
-- 更易维护和扩展
-
-### 2. 为什么使用节点级别跟踪？
-
-**优势**：
-- 细粒度监控
-- 支持部分重执行
-- 更好的错误定位
-- Hot Run 模式基础
-
-### 3. 为什么选择 SQLite？
-
-**优势**：
-- 轻量级，无服务器
-- 跨平台兼容
-- 易于备份和迁移
-- 足够的性能（中小规模）
-
-**扩展路径**：
-- 大规模部署可迁移到 PostgreSQL
-- 使用 SQLAlchemy ORM 抽象数据库层
-
-### 4. 工作流结构快照（workflow_snapshot）机制
-
-**问题**：用户运行工作流后，可能修改 JSON 结构（增删节点、改连接），也可能只调整参数。如何区分？
-
-**解决方案**：`workflow_snapshot` 机制
-
-| 变更类型 | 检测方式 | 是否保存快照 | 说明 |
-|---------|---------|------------|------|
-| **结构变更** | nodes/edges 变化 | ✅ 保存 | 节点增删、连接关系变化、节点类型变化 |
-| **参数变更** | 仅 params 变化 | ❌ 不保存 | 仅修改节点参数值，结构不变 |
-
-**实现**：
-- `app/services/workflow_diff.py`：`has_structure_changed()` 比较结构（忽略 params）
-- 执行时：比较当前结构与上次快照，结构变更则保存新快照
-- `executions.workflow_snapshot`：存储 JSON 字符串，用于历史追溯
-
-**好处**：
-- ✅ 可追溯每次执行使用的确切结构
-- ✅ 支持「从历史执行继续」功能
-- ✅ 避免参数调整时产生冗余快照
-- ✅ 区分结构变更 vs 参数变更，便于调试和审计
 
 ---
 
 ## 相关文档
 
-- [API 端点文档](api/endpoints.md)
-- [工作流格式说明](guides/workflow-format.md)
-- [数据库设计](current%20status/DATABASE_DESIGN.md)
-- [节点执行与同步方案](plan/node_execution_and_sync.md)
+- [API 文档](api/endpoints.md) - RESTful API 端点说明
+- [API 使用示例](API_USAGE_NEW_ARCHITECTURE.md) - 新架构 API 调用示例
+- [工作流格式说明](guides/workflow-format.md) - VueFlow JSON 格式
+- [工作空间管理](guides/workspace-management.md) - 文件传递和路径管理
+- [工具注册指南](guides/tool-registration.md) - 如何添加新工具
