@@ -27,4 +27,5 @@ class MockExecutor(Executor):
         })
 
     async def cancel(self, task_id: str) -> bool:
-        return False
+        """模拟取消任务，始终返回 True"""
+        return True

@@ -169,9 +169,14 @@ def get_workflow_service():
         from app.services.workflow_service import WorkflowService
         from app.services.execution_store import ExecutionStore
         from app.services.tool_registry import get_tool_registry as _get_app_tool_registry
+        from app.services.runner import execution_manager
         reg = _get_app_tool_registry()
         store = ExecutionStore()
-        _workflow_service = WorkflowService(tool_registry=reg, execution_store=store)
+        _workflow_service = WorkflowService(
+            tool_registry=reg,
+            execution_store=store,
+            execution_manager=execution_manager
+        )
     return _workflow_service
 
 

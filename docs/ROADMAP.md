@@ -14,15 +14,14 @@
 ## 项目状态
 
 **当前版本**: v0.2.0-beta
-**最后更新**: 2025-02-02
-**架构状态**: 已完成从编译器模式到直接 API 模式的重构
+**最后更新**: 2026-03-04
+**架构状态**: 已完成从编译器模式到直接 API 模式的重构，新增工作流取消功能
 
 ### 核心里程碑
 
 - ✅ **Phase 1**: 环境搭建和基础架构
 - ✅ **Phase 2**: FastAPI 后端和数据库集成
-
-
+- ✅ **Phase 2.5**: 工作流执行和取消功能 (NEW)
 - 🔄 **Phase 3**: 前端集成和用户界面
 - 📋 **Phase 4**: 高级功能和优化
 
@@ -34,12 +33,20 @@
 
 - [x] FastAPI 后端框架搭建
 - [x] SQLite 数据库设计和实现
-- [x] Snakemake API 直接执行模式
-- [x] 工作流规范化 (WorkflowNormalizer)
-- [x] 节点到 Snakemake Rule 转换 (RuleBuilder)
 - [x] 程序化工作流构建 (WorkflowBuilder)
 - [x] 节点级别执行跟踪 (ExecutionStore)
 - [x] 日志捕获和存储 (LogHandler)
+
+### ✅ 工作流执行和取消
+
+- [x] **工作流取消功能** (2026-03-04)
+  - ProcessRegistry: 全局进程注册表，追踪运行中的子进程
+  - 两阶段终止: SIGTERM (优雅终止) → SIGKILL (强制终止，3秒超时)
+  - ExecutionManager 增强: 追踪运行中节点，支持真正取消
+  - LocalExecutor.cancel(): 通过进程注册表终止进程
+  - WorkflowService 集成: 生成 task_id，注册节点状态
+  - API 兼容: POST /api/executions/{id}/stop 现在真正终止进程
+  - 线程安全: 支持并发执行和取消操作
 
 ### ✅ 工具管理
 
@@ -278,7 +285,7 @@ async def workflow_websocket(websocket: WebSocket, workflow_id: str):
 
 **支持格式**:
 - [ ] CWL (Common Workflow Language)
-- [ ] Snakemake 工作流格式
+
 - [ ] Nextflow
 - [ ] 自定义 JSON 格式
 

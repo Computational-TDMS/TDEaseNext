@@ -17,15 +17,17 @@ class ExecutionStore:
         execution_id: str,
         workflow_id: str,
         workspace_path: str,
+        sample_id: Optional[str] = None,
         workflow_snapshot: Optional[str] = None
     ) -> None:
         """
         Create execution record.
-        
+
         Args:
             execution_id: Execution ID
             workflow_id: Workflow ID
             workspace_path: Workspace directory path
+            sample_id: Sample ID (optional)
             workflow_snapshot: JSON string of workflow structure snapshot (only saved on structure changes)
         """
         now = datetime.utcnow().isoformat() + "Z"
@@ -34,10 +36,10 @@ class ExecutionStore:
                 conn.execute(
                     """
                     INSERT OR REPLACE INTO executions
-                    (id, workflow_id, status, start_time, end_time, engine_args, config_overrides, environment, workspace_path, workflow_snapshot, created_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    (id, workflow_id, sample_id, status, start_time, end_time, engine_args, config_overrides, environment, workspace_path, workflow_snapshot, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
-                    (execution_id, workflow_id, "pending", now, None, None, None, None, workspace_path, workflow_snapshot, now),
+                    (execution_id, workflow_id, sample_id, "pending", now, None, None, None, None, workspace_path, workflow_snapshot, now),
                 )
                 conn.commit()
             except Exception as e:
@@ -160,11 +162,11 @@ class ExecutionStore:
     def get_node(self, execution_id: str, node_id: str) -> Optional[Dict[str, Any]]:
         """
         Get specific node record.
-        
+
         Args:
             execution_id: Execution ID
             node_id: Frontend node ID
-            
+
         Returns:
             Node record or None
         """
@@ -176,3 +178,38 @@ class ExecutionStore:
             )
             row = cursor.fetchone()
             return dict(row) if row else None
+
+    def get_latest_completed_execution(self, workflow_id: str) -> Optional[Dict[str, Any]]:
+        """
+        Get the most recent completed execution for a workflow.
+
+        Args:
+            workflow_id: Workflow identifier
+
+        Returns:
+            Execution record with metadata or None if no completed execution found
+        """
+        with self._conn() as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.execute(
+                """
+                SELECT id, workflow_id, sample_id, status, start_time, end_time, workspace_path
+                FROM executions
+                WHERE workflow_id = ? AND status = 'completed'
+                ORDER BY end_time DESC
+                LIMIT 1
+                """,
+                (workflow_id,)
+            )
+            row = cursor.fetchone()
+            if row:
+                return {
+                    "id": row["id"],
+                    "workflow_id": row["workflow_id"],
+                    "sample_id": row["sample_id"],
+                    "status": row["status"],
+                    "start_time": row["start_time"],
+                    "end_time": row["end_time"],
+                    "workspace_path": row["workspace_path"]
+                }
+            return None

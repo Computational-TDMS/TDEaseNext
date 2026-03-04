@@ -1,0 +1,167 @@
+{
+  "id": "promex",
+  "name": "ProMex",
+  "version": "1.0.7569",
+  "description": "ProMex: LC-MS feature extraction tool for detecting isotopomer envelopes of intact protein ions",
+  "executionMode": "native",
+  "command": {
+    "executable": "D:\\Projects\\TDEase-Backend\\InformedProteomics_Program\\ProMex.exe"
+  },
+  "ports": {
+    "inputs": [
+      {
+        "id": "input_file",
+        "name": "Input File",
+        "dataType": "pbf",
+        "required": true,
+        "accept": ["pbf", "raw", "mzml"],
+        "flag": "-i"
+      }
+    ],
+    "outputs": [
+      {
+        "id": "ms1ft",
+        "name": "MS1 Feature File",
+        "dataType": "ms1ft",
+        "pattern": "{sample}.ms1ft",
+        "handle": "ms1ft",
+        "provides": ["ms1ft", "feature"]
+      },
+      {
+        "id": "feature_png",
+        "name": "Feature Heatmap",
+        "dataType": "png",
+        "pattern": "{sample}_ms1ft.png",
+        "handle": "feature_png",
+        "provides": ["png", "visualization"]
+      },
+      {
+        "id": "pbf",
+        "name": "PBF File",
+        "dataType": "pbf",
+        "pattern": "{sample}.pbf",
+        "handle": "pbf",
+        "provides": ["pbf"],
+        "conditional": "raw_input"
+      }
+    ]
+  },
+  "parameters": {
+    "output_dir": {
+      "flag": "-o",
+      "type": "value",
+      "label": "Output Directory",
+      "description": "Output directory (defaults to input file directory)",
+      "group": "basic"
+    },
+    "min_charge": {
+      "flag": "-minCharge",
+      "type": "value",
+      "label": "Min Charge",
+      "description": "Minimum charge state (Default: 1, Min: 1, Max: 60)",
+      "group": "basic",
+      "default": "1",
+      "constraints": {
+        "min": 1,
+        "max": 60
+      }
+    },
+    "max_charge": {
+      "flag": "-maxCharge",
+      "type": "value",
+      "label": "Max Charge",
+      "description": "Maximum charge state",
+      "group": "basic",
+      "default": "60"
+    },
+    "min_mass": {
+      "flag": "-minMass",
+      "type": "value",
+      "label": "Min Mass",
+      "description": "Minimum mass in Da",
+      "group": "basic",
+      "default": "2000"
+    },
+    "max_mass": {
+      "flag": "-maxMass",
+      "type": "value",
+      "label": "Max Mass",
+      "description": "Maximum mass in Da",
+      "group": "basic",
+      "default": "50000"
+    },
+    "feature_map": {
+      "flag": "-featureMap",
+      "type": "boolean",
+      "label": "Feature Heatmap",
+      "description": "Output the feature heatmap PNG",
+      "group": "basic",
+      "default": true
+    },
+    "score": {
+      "flag": "-score",
+      "type": "boolean",
+      "label": "Extended Scoring",
+      "description": "Output extended scoring information",
+      "group": "advanced",
+      "default": false
+    },
+    "max_threads": {
+      "flag": "-maxThreads",
+      "type": "value",
+      "label": "Max Threads",
+      "description": "Maximum number of threads (0 for automatic)",
+      "group": "basic",
+      "default": "0"
+    },
+    "csv": {
+      "flag": "-csv",
+      "type": "boolean",
+      "label": "CSV Output",
+      "description": "Also write feature data to a CSV file",
+      "group": "advanced",
+      "default": false
+    },
+    "score_threshold": {
+      "flag": "-scoreTh",
+      "type": "value",
+      "label": "Score Threshold",
+      "description": "Likelihood score threshold",
+      "group": "advanced",
+      "default": "-10"
+    },
+    "ms1ft_file": {
+      "flag": "-ms1ft",
+      "type": "value",
+      "label": "MS1FT File Path",
+      "description": "ms1ft format feature file path (use '.' to infer from pbf)",
+      "group": "advanced"
+    },
+    "param_file": {
+      "flag": "-ParamFile",
+      "type": "value",
+      "label": "Parameter File",
+      "description": "Path to a file containing program parameters",
+      "group": "advanced"
+    },
+    "create_param_file": {
+      "flag": "-CreateParamFile",
+      "type": "value",
+      "label": "Create Parameter File",
+      "description": "Create an example parameter file. Can supply a path; if path is not supplied, the example parameter file content will output to the console.",
+      "group": "advanced"
+    },
+    "help": {
+      "flag": "-help",
+      "type": "boolean",
+      "label": "Show Help",
+      "description": "Show help screen",
+      "group": "advanced"
+    }
+  },
+  "output": {
+    "flagSupported": true,
+    "flag": "-o",
+    "flagValue": "."
+  }
+}

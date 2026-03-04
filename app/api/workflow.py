@@ -885,8 +885,9 @@ async def execute(
         simulate = bool(parameters_raw.get("simulate", False))
 
         # ===== 样品上下文：新架构(workspace) 或 兼容旧格式(parameters.sample_context) =====
+        sample_id = None  # Initialize sample_id for execution record
         if user_id and workspace_id and sample_ids:
-            # 新架构: 从 samples.json 加载
+            # 新架构: 从 database 加载
             sample_id = sample_ids[0] if isinstance(sample_ids, list) else sample_ids
             ctx = _load_sample_context_from_workspace(user_id, workspace_id, sample_id)
             if not ctx:
@@ -932,7 +933,7 @@ async def execute(
             logger.warning(f"Failed to detect structure change, saving snapshot anyway: {e}")
             workflow_snapshot = json.dumps(wf_v2)
 
-        execution_store.create(execution_id, workflow_id, str(workspace_dir), workflow_snapshot)
+        execution_store.create(execution_id, workflow_id, str(workspace_dir), sample_id, workflow_snapshot)
         execution_manager.create(execution_id, str(workspace_dir), workflow_id)
         execution_manager.update_status(execution_id, "running", start_time=datetime.utcnow().isoformat() + "Z")
         execution_store.start(execution_id)
@@ -1325,4 +1326,38 @@ async def execute_batch(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Batch execution failed: {str(e)}"
+        )
+
+
+@router.get("/{workflow_id}/latest-execution")
+async def get_latest_execution(
+    workflow_id: str,
+    db=Depends(get_database)
+):
+    """
+    Get the most recent completed execution for a workflow.
+
+    Returns:
+    - Latest execution metadata (execution_id, status, start_time, end_time, sample_id)
+    """
+    try:
+        from app.services.execution_store import ExecutionStore
+        store = ExecutionStore()
+        execution = store.get_latest_completed_execution(workflow_id)
+
+        if not execution:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"No completed execution found for workflow: {workflow_id}"
+            )
+
+        return execution
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting latest execution: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get latest execution: {str(e)}"
         )

@@ -14,58 +14,11 @@ from app.core.engine import FlowEngine, WorkflowGraph, NodeState
 from app.core.engine.context import ExecutionContext
 from app.core.executor import LocalExecutor, MockExecutor, TaskSpec
 from app.services.tool_registry import get_tool_registry
-from src.workflow.validator import validate_placeholders
+# 从 node_data_service 导入路径推导函数（保持向后兼容）
+from app.services.node_data_service import _get_output_patterns, _resolve_output_paths
+
 
 logger = logging.getLogger(__name__)
-
-
-def _get_output_patterns(tool_info: Dict[str, Any]) -> List[Dict[str, str]]:
-    """从工具定义获取输出模式：优先 output_patterns，否则从 ports.outputs 推导（新 Schema）"""
-    patterns = tool_info.get("output_patterns", [])
-    if patterns:
-        return patterns
-    outputs = tool_info.get("ports", {}).get("outputs", [])
-    for o in outputs:
-        if isinstance(o, dict) and o.get("pattern"):
-            patterns.append({
-                "pattern": o["pattern"],
-                "handle": o.get("handle") or o.get("id", "output"),
-            })
-    if not patterns and tool_info.get("outputs"):
-        for o in tool_info["outputs"]:
-            if isinstance(o, dict) and o.get("pattern"):
-                patterns.append({
-                    "pattern": o["pattern"],
-                    "handle": o.get("handle") or o.get("id", "output"),
-                })
-    return patterns
-
-
-def _resolve_output_paths(
-    node_id: str,
-    tool_id: str,
-    tool_info: Dict[str, Any],
-    sample_ctx: Dict[str, str],
-    workspace: Path,
-) -> List[Path]:
-    """根据 output_patterns / ports.outputs 和 sample_ctx 解析输出路径"""
-    patterns = _get_output_patterns(tool_info)
-    if not patterns:
-        return []
-    result = []
-    for p in patterns:
-        pat = p.get("pattern", "") if isinstance(p, dict) else str(p)
-
-        # Validate all placeholders are present before formatting
-        required = set(re.findall(r"\{(\w+)\}", pat))
-        if required:
-            validate_placeholders(required, sample_ctx, pattern_hint=pat)
-
-        # Now format with confidence
-        resolved = pat.format(**sample_ctx)
-        result.append(workspace / resolved)
-
-    return result
 
 
 def _get_positional_input_ids(tool_info: Dict[str, Any]) -> List[str]:
@@ -88,9 +41,71 @@ def _resolve_input_paths(
     workspace: Path,
     completed_outputs: Dict[str, List[Path]],
     target_tool_id: str = "",
-) -> List[Path]:
-    """根据边和上游节点输出解析输入路径。若有 positional 端口则按 positionalOrder 排列。"""
+) -> Dict[str, Path]:
+    """根据边和上游节点输出解析输入路径，返回 port_id -> Path 的字典。
+
+    支持穿越交互式节点：当上游节点是交互式节点(executionMode=interactive)时，
+    会递归向上查找，直到找到非交互式处理节点的输出。
+    """
     param_to_path: Dict[str, Path] = {}
+    
+    logger.info(f"[resolve_input_paths] Called for node {node_id}, tool={target_tool_id}")
+    logger.info(f"[resolve_input_paths] edges count: {len(edges)}, completed_outputs keys: {list(completed_outputs.keys())}")
+
+    def find_real_source(interactive_src_id: str, visited: set) -> Optional[str]:
+        """递归查找真实的非交互式源节点。
+
+        Args:
+            interactive_src_id: 当前检查的节点ID
+            visited: 已访问的节点集合，防止循环
+
+        Returns:
+            真实源节点的ID，如果没找到则返回None
+        """
+        if interactive_src_id in visited:
+            logger.warning(f"循环检测：节点 {interactive_src_id} 在输入解析中已被访问")
+            return None
+        visited.add(interactive_src_id)
+
+        # 检查该节点是否已完成执行（有输出）
+        if interactive_src_id in completed_outputs:
+            return interactive_src_id
+
+        # 检查是否是交互式节点
+        src_node = nodes_map.get(interactive_src_id, {})
+        src_data = src_node.get("data", {})
+        src_tool = src_data.get("type", "")
+        src_info = tools_registry.get(src_tool, {})
+
+        # 如果是交互式节点，继续向上游查找
+        if src_info.get("executionMode") == "interactive":
+            # 找到该交互式节点的所有上游输入边
+            for e in edges:
+                if e.get("target") != interactive_src_id:
+                    continue
+                upstream_src_id = e.get("source")
+                if upstream_src_id:
+                    result = find_real_source(upstream_src_id, visited)
+                    if result:
+                        return result
+            return None
+        else:
+            # 非交互式节点但还没完成执行，返回None
+            return None
+
+    # 获取源节点的输出端口定义（用于数据类型匹配）
+    def get_output_data_types(src_info: Dict[str, Any]) -> Dict[str, str]:
+        """获取源工具的所有输出端口的 {handle: dataType} 映射"""
+        result = {}
+        outputs = src_info.get("ports", {}).get("outputs", [])
+        for o in outputs:
+            if isinstance(o, dict):
+                handle = o.get("handle") or o.get("id", "")
+                data_type = o.get("dataType", "")
+                if handle and data_type:
+                    result[handle] = data_type
+        return result
+
     for e in edges:
         if e.get("target") != node_id:
             continue
@@ -99,29 +114,59 @@ def _resolve_input_paths(
         src_handle = src_handle_raw.replace("output-", "") if src_handle_raw else ""
         tgt_handle_raw = e.get("targetHandle") or ""
         tgt_handle = tgt_handle_raw.replace("input-", "") if tgt_handle_raw else ""
-        if not src_id or src_id not in completed_outputs:
+
+        logger.info(f"[resolve_input_paths] Edge: source={src_id}, target={node_id}, srcHandle={src_handle_raw} -> {src_handle}, tgtHandle={tgt_handle_raw} -> {tgt_handle}")
+
+        if not src_id:
             continue
-        src_outputs = completed_outputs[src_id]
-        src_node = nodes_map.get(src_id, {})
+
+        # 查找真实的源节点（穿越交互式节点）
+        real_src_id = find_real_source(src_id, set())
+        if not real_src_id or real_src_id not in completed_outputs:
+            continue
+
+        src_outputs = completed_outputs[real_src_id]
+        src_node = nodes_map.get(real_src_id, {})
         src_data = src_node.get("data", {})
         src_tool = src_data.get("type", "")
         src_info = tools_registry.get(src_tool, {})
         patterns = _get_output_patterns(src_info)
+        
         if not patterns:
             if tgt_handle and src_outputs:
                 param_to_path[tgt_handle] = src_outputs[0]
             continue
+        
+        # 获取源节点的输出数据类型映射
+        output_data_types = get_output_data_types(src_info)
+        
+        matched_idx = None
         for idx, p in enumerate(patterns):
             h = p.get("handle", "") if isinstance(p, dict) else ""
-            if not src_handle or h == src_handle or (not h and idx == 0):
-                if idx < len(src_outputs) and tgt_handle:
-                    param_to_path[tgt_handle] = src_outputs[idx]
+            
+            # 匹配策略 1: handle 精确匹配
+            if h and h == src_handle:
+                matched_idx = idx
                 break
-    target_info = tools_registry.get(target_tool_id, {})
-    positional_ids = _get_positional_input_ids(target_info)
-    if positional_ids:
-        return [param_to_path[pid] for pid in positional_ids if pid in param_to_path]
-    return list(param_to_path.values())
+            
+            # 匹配策略 2: src_handle 是数据类型，与该端口的 dataType 匹配
+            if src_handle:
+                port_data_type = output_data_types.get(h, "")
+                if port_data_type and port_data_type == src_handle:
+                    matched_idx = idx
+                    logger.info(f"[resolve_input_paths] Matched by dataType: {src_handle} -> handle={h}")
+                    break
+            
+            # 匹配策略 3: 无 src_handle 时，使用第一个输出
+            if not src_handle and idx == 0:
+                matched_idx = idx
+                break
+        
+        if matched_idx is not None and matched_idx < len(src_outputs) and tgt_handle:
+            param_to_path[tgt_handle] = src_outputs[matched_idx]
+    
+    logger.info(f"[resolve_input_paths] Final param_to_path for {node_id}: {param_to_path}")
+    return param_to_path
 
 
 class WorkflowService:
@@ -132,11 +177,13 @@ class WorkflowService:
         tool_registry=None,
         execution_store=None,
         executor=None,
+        execution_manager=None,
     ):
         self.tool_registry = tool_registry or get_tool_registry()
         self.tools = self.tool_registry.list_tools()
         self.executor = executor or LocalExecutor(self.tools)
         self.execution_store = execution_store
+        self.execution_manager = execution_manager  # 用于注册节点状态以支持取消操作
 
     async def execute_workflow(
         self,
@@ -193,37 +240,72 @@ class WorkflowService:
                 return False
             return all(p.exists() for p in paths)
 
-        def build_task_spec(nid: str, node_data: Dict, c: ExecutionContext) -> TaskSpec:
+        def build_task_spec(nid: str, node_data: Dict, c: ExecutionContext) -> Optional[TaskSpec]:
             tool_id = node_data.get("type", "")
-            params_node = node_data.get("params", {})
             ti = self.tools.get(tool_id, {})
+
+            # 跳过交互式节点 (interactive execution mode)
+            if ti.get("executionMode") == "interactive":
+                logger.info(f"Skipping interactive node: {nid} (tool: {tool_id})")
+                return None
+
+            # 生成 task_id: {execution_id}:{node_id}
+            task_id = f"{c.execution_id}:{nid}"
+            logger.debug(f"[WorkflowService] Generated task_id={task_id} for node {nid}")
+
+            params_node = node_data.get("params", {})
             out_paths = _resolve_output_paths(nid, tool_id, ti, c.sample_context, c.workspace_path)
-            in_paths = _resolve_input_paths(
+            input_files_dict = _resolve_input_paths(
                 nid, edges, nodes_map, self.tools, c.sample_context, c.workspace_path, completed_outputs,
                 target_tool_id=tool_id,
             )
-            
+            logger.info(f"[WorkflowService] Resolved input_files_dict for node {nid}: {input_files_dict}")
+
+            # 保持向后兼容：input_paths 按 positional 顺序排列
+            positional_ids = _get_positional_input_ids(ti)
+            if positional_ids:
+                in_paths = [input_files_dict[pid] for pid in positional_ids if pid in input_files_dict]
+            else:
+                in_paths = list(input_files_dict.values())
+
             # 对于 data_loader，统一使用前端/context 传入的 sample 作为输出文件名，不兜底 basename
             if tool_id == "data_loader":
                 params_node = {**params_node, "sample_name": c.sample_context.get("sample", "")}
-            
+
             return TaskSpec(
                 node_id=nid,
                 tool_id=tool_id,
                 params=params_node,
                 input_paths=in_paths,
+                input_files=input_files_dict,  # 新增：port_id -> Path 映射
                 output_paths=out_paths,
                 workspace_path=c.workspace_path,
                 conda_env=ti.get("conda_env"),
                 log_callback=c.log_callback,
+                task_id=task_id,  # 新增：用于进程追踪和取消
             )
 
         async def execute_fn(nid: str, node_data: Dict, c: ExecutionContext) -> None:
             spec = build_task_spec(nid, node_data, c)
-            await executor.execute(spec)
-            tool_id = node_data.get("type", "")
-            ti = self.tools.get(tool_id, {})
-            completed_outputs[nid] = _resolve_output_paths(nid, tool_id, ti, c.sample_context, c.workspace_path)
+
+            # 跳过交互式节点 (返回 None 的 spec)
+            if spec is None:
+                on_node_state(nid, "skipped")
+                return
+
+            # 注册节点开始执行（用于取消操作）
+            if self.execution_manager and c.execution_id:
+                self.execution_manager.register_node_start(c.execution_id, nid)
+
+            try:
+                await executor.execute(spec)
+                tool_id = node_data.get("type", "")
+                ti = self.tools.get(tool_id, {})
+                completed_outputs[nid] = _resolve_output_paths(nid, tool_id, ti, c.sample_context, c.workspace_path)
+            finally:
+                # 注册节点完成（用于取消操作）
+                if self.execution_manager and c.execution_id:
+                    self.execution_manager.register_node_complete(c.execution_id, nid)
 
         def on_node_state(nid: str, state: str) -> None:
             if self.execution_store and ctx.execution_id:

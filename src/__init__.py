@@ -1,1 +1,0 @@
-"""TDEase Backend Application Package"""

@@ -74,6 +74,10 @@ class CommandPipeline:
         # Step 2: Resolve executable
         executable = self._resolve_executable()
         
+        logger.info(f"[CommandPipeline] Building command for tool: {self.tool_def.get('id', 'unknown')}")
+        logger.info(f"[CommandPipeline] input_files: {input_files}")
+        logger.info(f"[CommandPipeline] filtered_params: {filtered_params}")
+        
         # cmd_parts 为原始参数列表，由 LocalExecutor 用 list2cmdline/shlex.join 统一加引号，此处不包一层引号
         cmd_parts = []
         if self.execution_mode == "script":
@@ -94,7 +98,12 @@ class CommandPipeline:
         # Step 4: Add parameter flags
         cmd_parts.extend(self._build_parameter_flags(filtered_params))
 
-        # Step 4b: Add --params JSON for scripts that need extra params (e.g. sample_name)
+        # Step 4b: Add input flags (for inputs with flag attribute)
+        input_flags = self._build_input_flags(input_files)
+        logger.info(f"[CommandPipeline] input_flags: {input_flags}")
+        cmd_parts.extend(input_flags)
+
+        # Step 4c: Add --params JSON for scripts that need extra params (e.g. sample_name)
         if self.tool_def.get("useParamsJson") or self.tool_def.get("use_params_json"):
             # 排除前端/内部字段，只传脚本需要的参数
             internal_keys = {"tool_type", "type"}
@@ -103,8 +112,11 @@ class CommandPipeline:
             cmd_parts.extend(["--params", params_json])
 
         # Step 5: Add positional arguments
-        cmd_parts.extend(self._build_positional_args(input_files))
+        positional_args = self._build_positional_args(input_files)
+        logger.info(f"[CommandPipeline] positional_args: {positional_args}")
+        cmd_parts.extend(positional_args)
 
+        logger.info(f"[CommandPipeline] Final cmd_parts: {cmd_parts}")
         return cmd_parts
 
     def _filter_empty_params(self, params: Dict[str, Any]) -> Dict[str, Any]:
@@ -223,6 +235,29 @@ class CommandPipeline:
                     # Handle other types
                     else:
                         flags.extend([flag, str(value)])
+
+        return flags
+
+    def _build_input_flags(self, input_files: Dict[str, str]) -> List[str]:
+        """
+        Step 4b: Build flag arguments for input ports that have a 'flag' attribute.
+
+        Input ports can specify a flag (e.g., "-s") to be used instead of positional.
+        """
+        flags = []
+        inputs = self.ports.get("inputs", [])
+
+        for inp in inputs:
+            port_id = inp.get("id", "")
+            flag = inp.get("flag", "")
+            file_path = input_files.get(port_id, "")
+
+            # Skip if no flag, no file path, or if it's a positional input
+            if not flag or not file_path or inp.get("positional", False):
+                continue
+
+            # Add flag and file path
+            flags.extend([flag, file_path])
 
         return flags
 

@@ -5,7 +5,9 @@ Provides REST API for:
 - User workspace management
 - Sample CRUD operations
 - Workspace metadata management
+- Workspace file browsing
 """
+from pathlib import Path
 from fastapi import APIRouter, HTTPException, Depends
 from typing import List, Optional, Dict, Any
 from pydantic import BaseModel, Field
@@ -194,3 +196,187 @@ async def delete_sample(user_id: str, workspace_id: str, sample_id: str):
         raise HTTPException(status_code=404, detail=f"Sample '{sample_id}' not found")
 
     return {"message": f"Sample '{sample_id}' deleted successfully"}
+
+
+@router.get("/users/{user_id}/workspaces/{workspace_id}/files")
+async def get_workspace_files(user_id: str, workspace_id: str):
+    """
+    List files in workspace for file browser UI.
+
+    Returns:
+    - Directory structure and files (sorted: directories first, then files, alphabetically)
+    - Hidden files (starting with .) are excluded
+    """
+    manager = get_unified_workspace_manager()
+    workspace_dir = manager.get_workspace_path(user_id, workspace_id)
+
+    if not workspace_dir or not workspace_dir.exists():
+        raise HTTPException(
+            status_code=404,
+            detail=f"Workspace not found: {user_id}/{workspace_id}"
+        )
+
+    def build_tree(path: Path, base_path: Path) -> List[Dict[str, Any]]:
+        """Build directory tree recursively"""
+        items = []
+        try:
+            for item in path.iterdir():
+                # Skip hidden files
+                if item.name.startswith('.'):
+                    continue
+
+                rel_path = str(item.relative_to(base_path))
+
+                if item.is_dir():
+                    items.append({
+                        "name": item.name,
+                        "type": "directory",
+                        "path": rel_path,
+                        "children": build_tree(item, base_path)
+                    })
+                else:
+                    items.append({
+                        "name": item.name,
+                        "type": "file",
+                        "path": rel_path,
+                        "size": item.stat().st_size,
+                        "extension": item.suffix,
+                        "modified": item.stat().st_mtime
+                    })
+        except PermissionError:
+            pass
+
+        # Sort: directories first, then files, alphabetically
+        items.sort(key=lambda x: (x["type"] != "directory", x["name"]))
+        return items
+
+    tree = build_tree(workspace_dir, workspace_dir)
+
+    return {
+        "user_id": user_id,
+        "workspace_id": workspace_id,
+        "workspace_path": str(workspace_dir),
+        "tree": tree
+    }
+
+
+@router.get("/users/{user_id}/workspaces/{workspace_id}/file-content")
+async def get_file_content(
+    user_id: str,
+    workspace_id: str,
+    path: str,
+    max_rows: int = 100
+):
+    """
+    Get file content preview within a workspace.
+
+    Query parameters:
+    - path: Relative path to file from workspace root
+    - max_rows: Maximum rows to return for tabular files (default: 100)
+
+    Returns:
+    - File metadata and content (tabular, text, or binary)
+    """
+    manager = get_unified_workspace_manager()
+    workspace_dir = manager.get_workspace_path(user_id, workspace_id)
+
+    if not workspace_dir or not workspace_dir.exists():
+        raise HTTPException(
+            status_code=404,
+            detail=f"Workspace not found: {user_id}/{workspace_id}"
+        )
+
+    # Path traversal prevention
+    if ".." in path or path.startswith("/"):
+        raise HTTPException(
+            status_code=403,
+            detail="Path traversal detected"
+        )
+
+    file_path = workspace_dir / path
+
+    # Ensure file is within workspace
+    try:
+        file_path.resolve().relative_to(workspace_dir.resolve())
+    except ValueError:
+        raise HTTPException(
+            status_code=403,
+            detail="Path outside workspace"
+        )
+
+    if not file_path.exists():
+        raise HTTPException(
+            status_code=404,
+            detail=f"File not found: {path}"
+        )
+
+    if not file_path.is_file():
+        raise HTTPException(
+            status_code=400,
+            detail="Path is not a file"
+        )
+
+    # Determine file type
+    extension = file_path.suffix.lower()
+    file_size = file_path.stat().st_size
+
+    # Tabular extensions
+    tabular_extensions = {'.tsv', '.txt', '.csv', '.ms1ft', '.feature'}
+
+    if extension in tabular_extensions:
+        # Parse as tabular
+        from app.services.node_data_service import parse_tabular_file
+        try:
+            data = parse_tabular_file(file_path, max_rows)
+            return {
+                "file_path": path,
+                "file_name": file_path.name,
+                "file_size": file_size,
+                "file_type": "tabular",
+                "content": {
+                    "columns": data["columns"],
+                    "rows": data["rows"],
+                    "total_rows": data["total_rows"],
+                    "preview_rows": len(data["rows"])
+                }
+            }
+        except Exception as e:
+            return {
+                "file_path": path,
+                "file_name": file_path.name,
+                "file_size": file_size,
+                "file_type": "text",
+                "content": f"Failed to parse file: {str(e)}"
+            }
+    else:
+        # Binary extensions
+        binary_extensions = {'.pbf', '.raw', '.mzml', '.png', '.jpg', '.jpeg'}
+        if extension in binary_extensions or file_size > 10 * 1024 * 1024:  # 10MB threshold
+            return {
+                "file_path": path,
+                "file_name": file_path.name,
+                "file_size": file_size,
+                "file_type": "binary",
+                "content": None
+            }
+        else:
+            # Try to read as text
+            try:
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    # Read up to 100KB
+                    content = f.read(100 * 1024)
+                return {
+                    "file_path": path,
+                    "file_name": file_path.name,
+                    "file_size": file_size,
+                    "file_type": "text",
+                    "content": content
+                }
+            except UnicodeDecodeError:
+                return {
+                    "file_path": path,
+                    "file_name": file_path.name,
+                    "file_size": file_size,
+                    "file_type": "binary",
+                    "content": None
+                }

@@ -6,7 +6,6 @@
       "Bash(openspec:*)",
       "Bash(python:*)",
       "Bash(find:*)",
-      "Bash(snakemake:*)",
       "Bash(python3:*)",
       "Bash(cat:*)",
       "Bash(rm:*)",
@@ -17,7 +16,9 @@
       "Bash(cd:*)",
       "Bash(ls:*)",
       "mcp__deepwiki__ask_question",
-      "WebSearch"
+      "WebSearch",
+      "Bash(sqlite3:*)",
+      "Bash(test:*)"
     ],
     "deny": [],
     "ask": []

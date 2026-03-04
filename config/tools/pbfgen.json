@@ -1,0 +1,83 @@
+{
+  "id": "pbfgen",
+  "name": "PBFGen",
+  "version": "1.0.7569",
+  "description": "PBFGen: Convert mass spectrometry data files to PBF format for Informed Proteomics",
+  "executionMode": "native",
+  "command": {
+    "executable": "D:\\Projects\\TDEase-Backend\\InformedProteomics_Program\\PbfGen.exe"
+  },
+  "ports": {
+    "inputs": [
+      {
+        "id": "input_file",
+        "name": "Input File",
+        "dataType": "raw",
+        "required": true,
+        "accept": ["raw", "mzml", "mzml.gz", "mzxml", "mzxml.gz"],
+        "flag": "-i"
+      }
+    ],
+    "outputs": [
+      {
+        "id": "pbf",
+        "name": "PBF File",
+        "dataType": "pbf",
+        "pattern": "{sample}.pbf",
+        "handle": "pbf",
+        "provides": ["pbf"]
+      }
+    ]
+  },
+  "parameters": {
+    "output_dir": {
+      "flag": "-o",
+      "type": "value",
+      "label": "Output Directory",
+      "description": "Output directory (defaults to input file directory)",
+      "group": "basic"
+    },
+    "start_scan": {
+      "flag": "-start",
+      "type": "value",
+      "label": "Start Scan",
+      "description": "Start scan number to limit scan range",
+      "group": "advanced",
+      "default": "-1"
+    },
+    "end_scan": {
+      "flag": "-end",
+      "type": "value",
+      "label": "End Scan",
+      "description": "End scan number to limit scan range",
+      "group": "advanced",
+      "default": "-1"
+    },
+    "param_file": {
+      "flag": "-ParamFile",
+      "type": "value",
+      "label": "Parameter File",
+      "description": "Path to a file containing program parameters",
+      "group": "advanced"
+    },
+    "create_param_file": {
+      "flag": "-CreateParamFile",
+      "type": "value",
+      "label": "Create Parameter File",
+      "description": "Create an example parameter file. Can supply a path; if path is not supplied, the example parameter file content will output to the console.",
+      "group": "advanced"
+    },
+    "help": {
+      "flag": "-help",
+      "type": "boolean",
+      "label": "Show Help",
+      "description": "Show help screen",
+      "group": "advanced"
+    }
+  },
+  "output": {
+    "flagSupported": true,
+    "flag": "-o",
+    "flagValue": "."
+  }
+}

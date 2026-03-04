@@ -26,13 +26,15 @@ class DatabaseInitializer:
                 # Enable foreign keys
                 conn.execute("PRAGMA foreign_keys = ON")
 
-                # Create tables
+                # Create tables in dependency order
                 self._create_workflows_table(conn)
+                self._create_samples_table(conn)  # Create before executions (FK dependency)
                 self._create_executions_table(conn)
                 self._create_execution_nodes_table(conn)
                 self._create_tools_table(conn)
                 self._create_files_table(conn)
                 self._create_batch_configs_table(conn)
+                self._create_schema_migrations_table(conn)
 
                 # Create indexes
                 self._create_indexes(conn)
@@ -49,10 +51,12 @@ class DatabaseInitializer:
             return False
 
     def _create_workflows_table(self, conn: sqlite3.Connection):
-        """Create workflows table"""
+        """Create workflows table with unified user_id + workspace_id structure"""
         conn.execute("""
             CREATE TABLE IF NOT EXISTS workflows (
                 id TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL,
+                workspace_id TEXT NOT NULL,
                 name TEXT NOT NULL,
                 description TEXT,
                 vueflow_data TEXT NOT NULL,
@@ -63,7 +67,8 @@ class DatabaseInitializer:
                 metadata TEXT,
                 workflow_format TEXT,
                 workflow_document TEXT,
-                batch_config TEXT
+                batch_config TEXT,
+                UNIQUE(user_id, workspace_id, id)
             )
         """)
         # Migrate existing tables to add new columns if they do not exist
@@ -71,21 +76,36 @@ class DatabaseInitializer:
             cursor = conn.cursor()
             cursor.execute("PRAGMA table_info(workflows)")
             cols = {row[1] for row in cursor.fetchall()}
+            if "user_id" not in cols:
+                logger.info("Migration: Adding user_id column to workflows table")
+                conn.execute("ALTER TABLE workflows ADD COLUMN user_id TEXT DEFAULT 'default_user'")
+            if "workspace_id" not in cols:
+                logger.info("Migration: Adding workspace_id column to workflows table")
+                conn.execute("ALTER TABLE workflows ADD COLUMN workspace_id TEXT")
+                # Try to extract workspace_id from workspace_path for existing records
+                cursor.execute("""
+                    UPDATE workflows
+                    SET workspace_id = substr(workspace_path, - instr(reverse(substr(workspace_path, 1, instr(workspace_path, 'workspaces') + 10)), '/') + 1)
+                    WHERE workspace_id IS NULL AND workspace_path LIKE '%workspaces/%'
+                """)
             if "workflow_format" not in cols:
                 conn.execute("ALTER TABLE workflows ADD COLUMN workflow_format TEXT")
             if "workflow_document" not in cols:
                 conn.execute("ALTER TABLE workflows ADD COLUMN workflow_document TEXT")
             if "batch_config" not in cols:
                 conn.execute("ALTER TABLE workflows ADD COLUMN batch_config TEXT")
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"Workflows table migration note: {e}")
 
     def _create_executions_table(self, conn: sqlite3.Connection):
-        """Create executions table"""
+        """Create executions table with unified user_id + workspace_id structure"""
         conn.execute("""
             CREATE TABLE IF NOT EXISTS executions (
                 id TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL,
+                workspace_id TEXT NOT NULL,
                 workflow_id TEXT NOT NULL,
+                sample_id TEXT,
                 status TEXT NOT NULL DEFAULT 'pending',
                 start_time TEXT NOT NULL,
                 end_time TEXT,
@@ -95,16 +115,42 @@ class DatabaseInitializer:
                 workspace_path TEXT NOT NULL,
                 workflow_snapshot TEXT,
                 created_at TEXT NOT NULL,
-                FOREIGN KEY (workflow_id) REFERENCES workflows (id) ON DELETE CASCADE
+                FOREIGN KEY (workflow_id) REFERENCES workflows (id) ON DELETE CASCADE,
+                FOREIGN KEY (sample_id) REFERENCES samples (id) ON DELETE SET NULL,
+                UNIQUE(user_id, workspace_id, id)
             )
         """)
-        # Migration: Add workflow_snapshot column if it doesn't exist
+        # Migration: Add columns if they don't exist
         try:
             cursor = conn.cursor()
             cursor.execute("PRAGMA table_info(executions)")
             cols = {row[1] for row in cursor.fetchall()}
+            if "user_id" not in cols:
+                logger.info("Migration: Adding user_id column to executions table")
+                conn.execute("ALTER TABLE executions ADD COLUMN user_id TEXT DEFAULT 'default_user'")
+            if "workspace_id" not in cols:
+                logger.info("Migration: Adding workspace_id column to executions table")
+                conn.execute("ALTER TABLE executions ADD COLUMN workspace_id TEXT")
+                # Try to extract workspace_id from workspace_path for existing records
+                cursor.execute("""
+                    UPDATE executions
+                    SET workspace_id = substr(workspace_path, - instr(reverse(substr(workspace_path, 1, instr(workspace_path, 'workspaces') + 10)), '/') + 1)
+                    WHERE workspace_id IS NULL AND workspace_path LIKE '%workspaces/%'
+                """)
             if "workflow_snapshot" not in cols:
                 conn.execute("ALTER TABLE executions ADD COLUMN workflow_snapshot TEXT")
+            if "sample_id" not in cols:
+                conn.execute("ALTER TABLE executions ADD COLUMN sample_id TEXT")
+            # Migration: Rename snakemake_args to engine_args for existing databases
+            if "snakemake_args" in cols and "engine_args" not in cols:
+                logger.info("Migration: Renaming snakemake_args to engine_args")
+                conn.execute("ALTER TABLE executions RENAME COLUMN snakemake_args TO engine_args")
+        except Exception as e:
+            logger.debug(f"Executions table migration note: {e}")
+            if "workflow_snapshot" not in cols:
+                conn.execute("ALTER TABLE executions ADD COLUMN workflow_snapshot TEXT")
+            if "sample_id" not in cols:
+                conn.execute("ALTER TABLE executions ADD COLUMN sample_id TEXT")
             # Migration: Rename snakemake_args to engine_args for existing databases
             if "snakemake_args" in cols and "engine_args" not in cols:
                 logger.info("Migration: Renaming snakemake_args to engine_args")
@@ -185,21 +231,89 @@ class DatabaseInitializer:
             cols = {row[1] for row in cursor.fetchall()}
             if "is_shared" not in cols:
                 conn.execute("ALTER TABLE batch_configs ADD COLUMN is_shared INTEGER DEFAULT 0")
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"Migration failed to add column to batch_configs: {e}")
+
+    def _create_samples_table(self, conn: sqlite3.Connection):
+        """Create samples table with unified user_id + workspace_id structure"""
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS samples (
+                id TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL,
+                workspace_id TEXT NOT NULL,
+                name TEXT NOT NULL,
+                description TEXT,
+                context TEXT NOT NULL,
+                data_paths TEXT NOT NULL,
+                metadata TEXT,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                UNIQUE(user_id, workspace_id, id)
+            )
+        """)
+        # Migration: add user_id column if table exists but column doesn't
+        try:
+            cursor = conn.cursor()
+            cursor.execute("PRAGMA table_info(samples)")
+            cols = {row[1] for row in cursor.fetchall()}
+            if "user_id" not in cols:
+                logger.info("Migration: Adding user_id column to samples table")
+                conn.execute("ALTER TABLE samples ADD COLUMN user_id TEXT DEFAULT 'default_user'")
+        except Exception as e:
+            logger.warning(f"Migration failed to add column to samples: {e}")
+
+    def _create_schema_migrations_table(self, conn: sqlite3.Connection):
+        """Create schema migrations tracking table"""
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS schema_migrations (
+                version TEXT PRIMARY KEY,
+                applied_at TEXT NOT NULL,
+                description TEXT
+            )
+        """)
+
+        # Insert initial migration if table is new
+        cursor = conn.cursor()
+        cursor.execute("SELECT COUNT(*) FROM schema_migrations")
+        if cursor.fetchone()[0] == 0:
+            # Insert initial schema version
+            conn.execute("""
+                INSERT INTO schema_migrations (version, applied_at, description)
+                VALUES (?, ?, ?)
+            """, ("1.0.0", datetime.now().isoformat(), "Initial schema with samples table"))
+            logger.info("Initialized schema migrations table with version 1.0.0")
+
+        # Insert new migration for user_id + workspace_id structure
+        cursor.execute("SELECT version FROM schema_migrations WHERE version = '2.0.0'")
+        if cursor.fetchone() is None:
+            conn.execute("""
+                INSERT INTO schema_migrations (version, applied_at, description)
+                VALUES (?, ?, ?)
+            """, ("2.0.0", datetime.now().isoformat(), "Add user_id and workspace_id to workflows, samples, executions tables for unified hierarchy"))
+            logger.info("Added migration 2.0.0 for unified user/workspace hierarchy")
 
     def _create_indexes(self, conn: sqlite3.Connection):
         """Create database indexes for performance"""
         # Workflows indexes
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_workflows_user_workspace ON workflows (user_id, workspace_id)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_workflows_status ON workflows (status)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_workflows_created_at ON workflows (created_at)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_workflows_format ON workflows (workflow_format)")
 
+        # Samples indexes
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_samples_user_workspace ON samples (user_id, workspace_id)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_samples_workspace_id ON samples (workspace_id)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_samples_name ON samples (name)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_samples_created_at ON samples (created_at)")
+
         # Executions indexes
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_executions_user_workspace ON executions (user_id, workspace_id)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_executions_workflow_id ON executions (workflow_id)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_executions_sample_id ON executions (sample_id)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_executions_workflow_sample ON executions (workflow_id, sample_id)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_executions_status ON executions (status)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_executions_created_at ON executions (created_at)")
-        
+
         # Execution nodes indexes
         conn.execute("CREATE INDEX IF NOT EXISTS idx_execution_nodes_execution_id ON execution_nodes (execution_id)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_execution_nodes_node_id ON execution_nodes (node_id)")
@@ -212,7 +326,7 @@ class DatabaseInitializer:
         # Files indexes
         conn.execute("CREATE INDEX IF NOT EXISTS idx_files_workspace_path ON files (workspace_path)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_files_uploaded_at ON files (uploaded_at)")
-        
+
         # Batch configs indexes
         conn.execute("CREATE INDEX IF NOT EXISTS idx_batch_configs_user_id ON batch_configs (user_id)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_batch_configs_created_at ON batch_configs (created_at)")
@@ -257,7 +371,7 @@ def get_database_connection(db_path: Optional[str] = None) -> sqlite3.Connection
             with sqlite3.connect(db_path) as conn:
                 cursor = conn.cursor()
                 # Check required tables
-                required_tables = ["workflows", "executions", "execution_nodes", "tools", "files", "batch_configs"]
+                required_tables = ["workflows", "executions", "execution_nodes", "tools", "files", "batch_configs", "samples", "schema_migrations"]
                 cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
                 existing_tables = {row[0] for row in cursor.fetchall()}
                 
@@ -280,6 +394,12 @@ def get_database_connection(db_path: Optional[str] = None) -> sqlite3.Connection
                 if "batch_configs" not in existing_tables:
                     logger.info("Migration: Creating batch_configs table")
                     initializer._create_batch_configs_table(conn)
+                if "samples" not in existing_tables:
+                    logger.info("Migration: Creating samples table")
+                    initializer._create_samples_table(conn)
+                if "schema_migrations" not in existing_tables:
+                    logger.info("Migration: Creating schema_migrations table")
+                    initializer._create_schema_migrations_table(conn)
                 
                 # Ensure indexes exist
                 initializer._create_indexes(conn)
@@ -325,7 +445,7 @@ def check_database_health(db_path: Optional[str] = None) -> dict:
             # Check tables exist
             cursor = conn.cursor()
 
-            tables = ["workflows", "executions", "execution_nodes", "tools", "files", "batch_configs"]
+            tables = ["workflows", "executions", "execution_nodes", "tools", "files", "batch_configs", "samples", "schema_migrations"]
             missing_tables = []
 
             for table in tables:

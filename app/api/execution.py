@@ -1,10 +1,12 @@
 import logging
-from fastapi import APIRouter, HTTPException, status, Query
+from fastapi import APIRouter, HTTPException, status, Query, Depends
 from app.services.runner import execution_manager
 from app.services.execution_store import ExecutionStore
 from app.services.log_handler import log_collector
+from app.services.node_data_service import resolve_node_outputs
 from app.models.schemas import WorkflowExecutionResponse, NodeStatus, LogEntry
 from app.models.common import SuccessResponse
+from app.dependencies import get_database
 from fastapi.responses import FileResponse
 from pathlib import Path
 from typing import Optional
@@ -143,9 +145,17 @@ async def get_execution_node(execution_id: str, node_id: str):
 
 @router.post("/{execution_id}/stop", response_model=SuccessResponse)
 async def stop_execution(execution_id: str) -> SuccessResponse:
+    """
+    Stop a running workflow execution.
+
+    Cancels all running nodes and updates the execution status to "cancelled".
+    """
     ex = execution_manager.get(execution_id)
     if not ex:
+        logger.warning(f"[API] Stop requested for non-existent execution {execution_id}")
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not Found")
+
+    logger.info(f"[API] Stop requested for execution {execution_id}, current status: {ex.status}")
     await execution_manager.stop(execution_id)
     return SuccessResponse(success=True, message=f"Execution {execution_id} stopped")
 
@@ -161,3 +171,70 @@ async def download_execution_result(execution_id: str):
         if p.is_file():
             return FileResponse(str(p), filename=p.name)
     raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No result files")
+
+
+@router.get("/{execution_id}/nodes/{node_id}/data")
+async def get_node_data(
+    execution_id: str,
+    node_id: str,
+    include_data: bool = Query(False, description="Include parsed data in response"),
+    max_rows: Optional[int] = Query(None, description="Maximum rows to parse (if include_data=true)"),
+    db=Depends(get_database)
+):
+    """
+    Get node output data with optional inline data content.
+
+    Query parameters:
+    - include_data: If true, parse and include file data in response
+    - max_rows: Maximum rows to parse (for tabular files)
+
+    Returns:
+    - List of output ports with file metadata and optional parsed data
+    """
+    try:
+        result = resolve_node_outputs(
+            execution_id=execution_id,
+            node_id=node_id,
+            db=db,
+            include_data=include_data,
+            max_rows=max_rows
+        )
+        return result
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+    except Exception as e:
+        logger.error(f"Error getting node data: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get node data: {str(e)}"
+        )
+
+
+@router.get("/{execution_id}/nodes/{node_id}/files")
+async def get_node_files(
+    execution_id: str,
+    node_id: str,
+    db=Depends(get_database)
+):
+    """
+    Get node output files list (without data content).
+
+    Returns:
+    - List of output ports with file metadata (no data content)
+    """
+    try:
+        result = resolve_node_outputs(
+            execution_id=execution_id,
+            node_id=node_id,
+            db=db,
+            include_data=False
+        )
+        return result
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+    except Exception as e:
+        logger.error(f"Error getting node files: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get node files: {str(e)}"
+        )

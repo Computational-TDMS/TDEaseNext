@@ -3,7 +3,7 @@ Unified Workspace Manager - Complete workspace management system
 
 Combines hierarchical user/workspace management with execution directory structure:
 - users/{user_id}/workspaces/{workspace_id}/
-  - samples.json (sample definitions with context)
+  - samples.json (sample definitions with context) - DEPRECATED, now using database
   - workflows/ (workflow definitions)
   - executions/{exec_id}/ (execution records with isolation)
   - data/ (shared data files: raw/, fasta/, reference/)
@@ -13,9 +13,13 @@ import json
 import os
 import re
 import shutil
+import logging
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Any, Tuple
+from app.services.sample_store import sample_store, SampleValidationError
+
+logger = logging.getLogger(__name__)
 
 
 class UnifiedWorkspaceManager:
@@ -33,6 +37,7 @@ class UnifiedWorkspaceManager:
         """Initialize unified workspace manager"""
         self.data_root = Path(data_root)
         self.users_dir = self.data_root / "users"
+        self.sample_store = sample_store  # Add sample_store reference
 
     # ========== Path Management ==========
 
@@ -130,18 +135,8 @@ class UnifiedWorkspaceManager:
         with open(workspace_file, 'w') as f:
             json.dump(workspace_meta, f, indent=2)
 
-        # Create empty samples.json
-        samples_data = {
-            "version": "1.0",
-            "workspace_id": workspace_id,
-            "created_at": datetime.utcnow().isoformat() + "Z",
-            "updated_at": datetime.utcnow().isoformat() + "Z",
-            "samples": {}
-        }
-
-        samples_file = workspace_path / "samples.json"
-        with open(samples_file, 'w') as f:
-            json.dump(samples_data, f, indent=2)
+        # Note: samples.json is no longer created - data is stored in database
+        # Legacy samples.json files will be migrated to database automatically
 
         return workspace_meta
 
@@ -174,80 +169,149 @@ class UnifiedWorkspaceManager:
     # ========== Sample Management ==========
 
     def load_samples(self, user_id: str, workspace_id: str) -> Dict[str, Any]:
-        """Load samples.json file"""
-        samples_file = self.get_samples_file(user_id, workspace_id)
-        if not samples_file.exists():
-            return {"samples": {}}
+        """Load samples - from database"""
+        samples_list = self.sample_store.list_by_workspace(workspace_id, limit=10000)
 
-        with open(samples_file, 'r') as f:
-            return json.load(f)
+        samples_data = {
+            "version": "1.0",
+            "workspace_id": workspace_id,
+            "created_at": datetime.utcnow().isoformat() + "Z",
+            "updated_at": datetime.utcnow().isoformat() + "Z",
+            "samples": {}
+        }
+
+        for sample in samples_list:
+            samples_data["samples"][sample["id"]] = {
+                "id": sample["id"],
+                "name": sample["name"],
+                "description": sample["description"],
+                "context": sample["context"],
+                "data_paths": sample["data_paths"],
+                "metadata": sample["metadata"],
+                "created_at": sample["created_at"]
+            }
+
+        return samples_data
 
     def save_samples(self, user_id: str, workspace_id: str,
                     samples_data: Dict[str, Any]) -> None:
-        """Save samples.json file"""
-        samples_file = self.get_samples_file(user_id, workspace_id)
-        samples_data["updated_at"] = datetime.utcnow().isoformat() + "Z"
-
-        with open(samples_file, 'w') as f:
-            json.dump(samples_data, f, indent=2)
+        """Save samples - deprecated, saving to database instead (kept for compatibility)"""
+        # No longer needed, data is saved directly to database via add_sample/update_sample
+        pass
 
     def add_sample(self, user_id: str, workspace_id: str,
                   sample_id: str, name: str, context: Dict[str, str],
                   data_paths: Dict[str, str], description: str = "",
                   metadata: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-        """Add a sample to workspace"""
-        samples_data = self.load_samples(user_id, workspace_id)
+        """Add a sample - save to database
 
-        sample_def = {
-            "id": sample_id,
+        Args:
+            user_id: User identifier
+            workspace_id: Workspace identifier
+            sample_id: Unique sample identifier
+            name: Sample display name
+            context: Placeholder values for workflow resolution
+            data_paths: File path mappings
+            description: Sample description
+            metadata: Additional sample metadata
+
+        Returns:
+            The created sample dictionary
+
+        Raises:
+            SampleValidationError: If sample data is invalid
+            RuntimeError: If database operation fails
+        """
+        sample_data = {
+            "user_id": user_id,
+            "workspace_id": workspace_id,
             "name": name,
             "description": description,
             "context": context,
             "data_paths": data_paths,
-            "metadata": metadata or {},
-            "created_at": datetime.utcnow().isoformat() + "Z"
+            "metadata": metadata or {}
         }
 
-        samples_data["samples"][sample_id] = sample_def
-        self.save_samples(user_id, workspace_id, samples_data)
+        try:
+            self.sample_store.save(sample_id, sample_data)
+        except SampleValidationError as e:
+            logger.error(f"Validation error adding sample {sample_id}: {e}")
+            raise
+        except Exception as e:
+            logger.error(f"Failed to save sample {sample_id}: {e}")
+            raise RuntimeError(f"Failed to save sample {sample_id}: {e}")
+
         self._update_workspace_stats(user_id, workspace_id)
 
-        return sample_def
+        result = self.sample_store.get(sample_id)
+        if not result:
+            raise RuntimeError(f"Sample {sample_id} was saved but could not be retrieved")
+        return result
 
     def update_sample(self, user_id: str, workspace_id: str,
                      sample_id: str, **updates) -> Optional[Dict[str, Any]]:
-        """Update a sample"""
-        samples_data = self.load_samples(user_id, workspace_id)
-        samples = samples_data.get("samples", {})
+        """Update sample - update database record
 
-        if sample_id not in samples:
+        Args:
+            user_id: User identifier
+            workspace_id: Workspace identifier
+            sample_id: Sample identifier
+            **updates: Fields to update
+
+        Returns:
+            Updated sample dictionary, or None if not found
+
+        Raises:
+            SampleValidationError: If update data is invalid
+            RuntimeError: If database operation fails
+        """
+        sample = self.sample_store.get(sample_id)
+        if not sample:
             return None
 
-        # Update allowed fields
+        # Create new dict with updates (immutable pattern)
+        updated_sample = {**sample}
         for field in ["name", "description", "context", "data_paths", "metadata"]:
             if field in updates:
-                samples[sample_id][field] = updates[field]
+                updated_sample[field] = updates[field]
 
-        self.save_samples(user_id, workspace_id, samples_data)
-        return samples[sample_id]
+        try:
+            self.sample_store.save(sample_id, updated_sample)
+        except SampleValidationError as e:
+            logger.error(f"Validation error updating sample {sample_id}: {e}")
+            raise
+        except Exception as e:
+            logger.error(f"Failed to update sample {sample_id}: {e}")
+            raise RuntimeError(f"Failed to update sample {sample_id}: {e}")
+
+        return self.sample_store.get(sample_id)
 
     def delete_sample(self, user_id: str, workspace_id: str, sample_id: str) -> bool:
-        """Delete a sample"""
-        samples_data = self.load_samples(user_id, workspace_id)
-        samples = samples_data.get("samples", {})
+        """Delete sample - from database
 
-        if sample_id not in samples:
-            return False
+        Args:
+            user_id: User identifier
+            workspace_id: Workspace identifier
+            sample_id: Sample identifier
 
-        del samples[sample_id]
-        self.save_samples(user_id, workspace_id, samples_data)
-        self._update_workspace_stats(user_id, workspace_id)
-        return True
+        Returns:
+            True if sample was deleted, False if not found
+
+        Raises:
+            RuntimeError: If database operation fails
+        """
+        try:
+            success = self.sample_store.delete(sample_id)
+            if success:
+                self._update_workspace_stats(user_id, workspace_id)
+            return success
+        except Exception as e:
+            logger.error(f"Failed to delete sample {sample_id}: {e}")
+            raise RuntimeError(f"Failed to delete sample {sample_id}: {e}")
 
     def list_samples(self, user_id: str, workspace_id: str) -> List[Dict[str, Any]]:
-        """List all samples in workspace"""
-        samples_data = self.load_samples(user_id, workspace_id)
-        return list(samples_data.get("samples", {}).values())
+        """List samples - from database"""
+        return self.sample_store.list_by_workspace(workspace_id)
 
     def get_sample_context(self, user_id: str, workspace_id: str,
                           sample_id: str) -> Optional[Dict[str, str]]:
@@ -256,46 +320,41 @@ class UnifiedWorkspaceManager:
 
         Returns None if sample not found.
         """
-        samples_data = self.load_samples(user_id, workspace_id)
-        sample = samples_data.get("samples", {}).get(sample_id)
-
+        sample = self.sample_store.get(sample_id)
         if not sample:
             return None
 
         # Build full context with auto-derivation
         return self._build_sample_context(sample, user_id, workspace_id)
 
-    def _build_sample_context(self, sample_def: Dict[str, Any],
+    def _build_sample_context(self, sample: Dict[str, Any],
                              user_id: str, workspace_id: str) -> Dict[str, str]:
         """
         Build complete sample context with derivation and merging.
 
+        data_paths now stores absolute paths, use them directly.
         Priority: Explicit values > Derived values
-        Includes raw_path, fasta_path as absolute paths for data_loader / fasta_loader.
         """
-        explicit_context = sample_def.get("context", {})
-        data_paths = sample_def.get("data_paths", {})
-        workspace_path = self.get_workspace_path(user_id, workspace_id)
+        explicit_context = sample.get("context", {})
+        data_paths = sample.get("data_paths", {})
 
-        # 统一使用 sample_id（或 context 显式值）作为 sample，不按 raw 文件名覆盖；由前端保证正确
+        # Base context
         derived = {
-            "sample": sample_def.get("id", ""),
+            "sample": sample.get("id", ""),
         }
 
-        # Derive from data_paths if available; resolve to absolute for validator/execution
+        # Get absolute path from data_paths (already absolute, use directly)
         raw_path = data_paths.get("raw", "")
         if raw_path:
-            raw_full = (workspace_path / raw_path).resolve()
-            derived["raw_path"] = str(raw_full)
             raw_file = Path(raw_path)
+            derived["raw_path"] = raw_path  # Use absolute path directly
             derived["input_basename"] = raw_file.stem
             derived["input_dir"] = str(raw_file.parent)
             derived["input_ext"] = raw_file.suffix.lstrip(".")
 
         fasta_path = data_paths.get("fasta", "")
         if fasta_path:
-            fasta_full = (workspace_path / fasta_path).resolve()
-            derived["fasta_path"] = str(fasta_full)
+            derived["fasta_path"] = fasta_path  # Use absolute path directly
 
         # Merge: explicit overrides derived
         return {**derived, **explicit_context}

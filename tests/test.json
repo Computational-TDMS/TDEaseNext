@@ -1,20 +1,20 @@
 {
   "metadata": {
     "id": "wf_test_full",
-    "name": "TOPFD/TOPPIC 测试工作流",
-    "version": "2.0.0",
-    "description": "完整的TopFD和TopPIC工作流测试 - 使用新架构",
+    "name": "TOPFD/TOPPIC + InformedProteomics 并行测试工作流",
+    "version": "3.0.0",
+    "description": "测试并行工作流 - TopFD+TopPIC 与 PBFGen+ProMex+MSPathFinderT 同时运行",
     "author": "TDEase",
     "created": "2026-03-02T00:00:00Z",
-    "modified": "2026-03-02T00:00:00Z",
-    "tags": ["test", "topfd", "toppic", "new-architecture"]
+    "modified": "2026-03-03T00:00:00Z",
+    "tags": ["test", "parallel", "topfd", "toppic", "pbfgen", "promex", "mspathfindert"]
   },
   "format_version": "2.0",
   "nodes": [
     {
       "id": "data_loader_1",
       "type": "data_loader",
-      "position": { "x": 120, "y": 120 },
+      "position": { "x": 120, "y": 80 },
       "data": {
         "label": "数据加载器"
       },
@@ -33,7 +33,7 @@
     {
       "id": "fasta_loader_1",
       "type": "fasta_loader",
-      "position": { "x": 120, "y": 280 },
+      "position": { "x": 120, "y": 200 },
       "data": {
         "label": "FASTA加载器"
       },
@@ -52,7 +52,7 @@
     {
       "id": "msconvert_1",
       "type": "msconvert",
-      "position": { "x": 300, "y": 120 },
+      "position": { "x": 300, "y": 80 },
       "data": {
         "label": "MSConvert"
       },
@@ -73,9 +73,27 @@
       ]
     },
     {
+      "id": "pbfgen_1",
+      "type": "pbfgen",
+      "position": { "x": 300, "y": 200 },
+      "data": {
+        "label": "PBFGen"
+      },
+      "nodeConfig": {
+        "toolId": "pbfgen",
+        "paramValues": {}
+      },
+      "inputs": [
+        { "id": "input_file", "name": "Input File", "dataType": "raw", "required": true }
+      ],
+      "outputs": [
+        { "id": "pbf", "name": "PBF File", "dataType": "pbf" }
+      ]
+    },
+    {
       "id": "topfd_1",
       "type": "topfd",
-      "position": { "x": 520, "y": 120 },
+      "position": { "x": 520, "y": 80 },
       "data": {
         "label": "TopFD"
       },
@@ -104,9 +122,35 @@
       ]
     },
     {
+      "id": "promex_1",
+      "type": "promex",
+      "position": { "x": 520, "y": 200 },
+      "data": {
+        "label": "ProMex"
+      },
+      "nodeConfig": {
+        "toolId": "promex",
+        "paramValues": {
+          "min_charge": "2",
+          "max_charge": "60",
+          "min_mass": "2000",
+          "max_mass": "50000",
+          "feature_map": true,
+          "max_threads": "0"
+        }
+      },
+      "inputs": [
+        { "id": "input_file", "name": "Input File", "dataType": "pbf", "required": true }
+      ],
+      "outputs": [
+        { "id": "ms1ft", "name": "MS1 Feature File", "dataType": "ms1ft" },
+        { "id": "feature_png", "name": "Feature Heatmap", "dataType": "png" }
+      ]
+    },
+    {
       "id": "toppic_1",
       "type": "toppic",
-      "position": { "x": 800, "y": 120 },
+      "position": { "x": 800, "y": 80 },
       "data": {
         "label": "TopPIC"
       },
@@ -138,6 +182,42 @@
       "outputs": [
         { "id": "proteoforms", "name": "Proteoforms TSV", "dataType": "tsv" }
       ]
+    },
+    {
+      "id": "mspathfindert_1",
+      "type": "mspathfindert",
+      "position": { "x": 800, "y": 200 },
+      "data": {
+        "label": "MSPathFinderT"
+      },
+      "nodeConfig": {
+        "toolId": "mspathfindert",
+        "paramValues": {
+          "search_mode": "1",
+          "tda": "1",
+          "precursor_tolerance": "10",
+          "fragment_tolerance": "10",
+          "min_length": "21",
+          "max_length": "300",
+          "min_charge": "2",
+          "max_charge": "30",
+          "min_frag_charge": "1",
+          "max_frag_charge": "15",
+          "min_mass": "3000",
+          "max_mass": "50000",
+          "threads": "0"
+        }
+      },
+      "inputs": [
+        { "id": "spec_file", "name": "Spectrum File", "dataType": "pbf", "required": true },
+        { "id": "database_file", "name": "Database File", "dataType": "fasta", "required": true },
+        { "id": "feature_file", "name": "Feature File", "dataType": "ms1ft", "required": false }
+      ],
+      "outputs": [
+        { "id": "ict_tda", "name": "TDA Results", "dataType": "tsv" },
+        { "id": "mzid", "name": "MZIdentML", "dataType": "mzid" },
+        { "id": "param", "name": "Parameter File", "dataType": "param" }
+      ]
     }
   ],
   "edges": [
@@ -149,11 +229,25 @@
       "targetHandle": "input-input_files"
     },
     {
+      "id": "e_data_pbfgen",
+      "source": "data_loader_1",
+      "target": "pbfgen_1",
+      "sourceHandle": "output-mzml",
+      "targetHandle": "input-input_file"
+    },
+    {
       "id": "e_msconvert_topfd",
       "source": "msconvert_1",
       "target": "topfd_1",
       "sourceHandle": "output-mzml",
       "targetHandle": "input-input_files"
+    },
+    {
+      "id": "e_pbfgen_promex",
+      "source": "pbfgen_1",
+      "target": "promex_1",
+      "sourceHandle": "output-pbf",
+      "targetHandle": "input-input_file"
     },
     {
       "id": "e_topfd_toppic",
@@ -163,11 +257,32 @@
       "targetHandle": "input-msalign_files"
     },
     {
+      "id": "e_promex_mspathfinder",
+      "source": "promex_1",
+      "target": "mspathfindert_1",
+      "sourceHandle": "output-ms1ft",
+      "targetHandle": "input-feature_file"
+    },
+    {
       "id": "e_fasta_toppic",
       "source": "fasta_loader_1",
       "target": "toppic_1",
       "sourceHandle": "output-fasta",
       "targetHandle": "input-fasta_file"
+    },
+    {
+      "id": "e_fasta_mspathfinder",
+      "source": "fasta_loader_1",
+      "target": "mspathfindert_1",
+      "sourceHandle": "output-fasta",
+      "targetHandle": "input-database_file"
+    },
+    {
+      "id": "e_pbfgen_mspathfinder",
+      "source": "pbfgen_1",
+      "target": "mspathfindert_1",
+      "sourceHandle": "output-pbf",
+      "targetHandle": "input-spec_file"
     }
   ],
   "connections": [],

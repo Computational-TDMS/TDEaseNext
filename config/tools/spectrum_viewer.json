@@ -1,0 +1,117 @@
+{
+  "id": "spectrum_viewer",
+  "name": "Spectrum Viewer",
+  "version": "1.0.0",
+  "description": "Interactive spectrum visualization for mass spectrometry data (m/z vs Intensity)",
+  "executionMode": "interactive",
+  "command": {
+    "executable": "spectrum_viewer"
+  },
+  "ports": {
+    "inputs": [
+      {
+        "id": "msalign_file",
+        "name": "MSAlign File",
+        "dataType": "msalign",
+        "required": true,
+        "description": "Mass spectrum alignment file (msalign/tsv format)"
+      }
+    ],
+    "outputs": [
+      {
+        "id": "selection",
+        "name": "Selection",
+        "dataType": "selection",
+        "required": false,
+        "description": "Selected peaks for downstream processing"
+      }
+    ]
+  },
+  "parameters": {
+    "max_peaks": {
+      "flag": "",
+      "type": "value",
+      "label": "Max Peaks",
+      "description": "Maximum number of peaks to display",
+      "group": "basic",
+      "default": "1000"
+    },
+    "min_mz": {
+      "flag": "",
+      "type": "value",
+      "label": "Min m/z",
+      "description": "Minimum m/z value to display",
+      "group": "advanced",
+      "default": "0"
+    },
+    "max_mz": {
+      "flag": "",
+      "type": "value",
+      "label": "Max m/z",
+      "description": "Maximum m/z value to display",
+      "group": "advanced",
+      "default": "2000"
+    },
+    "normalize_intensity": {
+      "flag": "",
+      "type": "boolean",
+      "label": "Normalize Intensity",
+      "description": "Normalize intensity to 0-100 range",
+      "group": "basic",
+      "default": true
+    }
+  },
+  "output": {
+    "flagSupported": false
+  },
+  "visualization": {
+    "type": "spectrum",
+    "dataSource": "file",
+    "filePath": "{input_basename}.msalign",
+    "columns": [
+      {
+        "id": "mz",
+        "name": "m/z",
+        "type": "number",
+        "visible": true,
+        "sortable": false,
+        "filterable": false
+      },
+      {
+        "id": "intensity",
+        "name": "Intensity",
+        "type": "number",
+        "visible": true,
+        "sortable": false,
+        "filterable": false
+      },
+      {
+        "id": "charge",
+        "name": "Charge",
+        "type": "number",
+        "visible": false,
+        "sortable": false,
+        "filterable": true
+      },
+      {
+        "id": "rt",
+        "name": "RT (min)",
+        "type": "number",
+        "visible": false,
+        "sortable": false,
+        "filterable": true
+      }
+    ],
+    "config": {
+      "plotType": "bar",
+      "xAxisLabel": "m/z",
+      "yAxisLabel": "Intensity",
+      "colorScale": "viridis",
+      "barWidth": 2,
+      "showPeaks": true,
+      "enableBrush": true,
+      "tooltipEnabled": true,
+      "exportFormats": ["png", "svg", "csv"]
+    }
+  }
+}

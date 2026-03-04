@@ -17,7 +17,15 @@
         "description": "Tabular data file to visualize"
       }
     ],
-    "outputs": []
+    "outputs": [
+      {
+        "id": "selection",
+        "name": "Selection",
+        "dataType": "selection",
+        "required": false,
+        "description": "Selected rows for downstream processing"
+      }
+    ]
   },
   "parameters": {
     "max_rows": {

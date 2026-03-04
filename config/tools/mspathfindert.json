@@ -1,0 +1,305 @@
+{
+  "id": "mspathfindert",
+  "name": "MSPathFinderT",
+  "version": "1.0.7569",
+  "description": "MSPathFinderT: Database search for top-down LC-MS/MS datasets - finds proteoform spectrum matches (PsSMs)",
+  "executionMode": "native",
+  "command": {
+    "executable": "D:\\Projects\\TDEase-Backend\\InformedProteomics_Program\\MSPathFinderT.exe"
+  },
+  "ports": {
+    "inputs": [
+      {
+        "id": "spec_file",
+        "name": "Spectrum File",
+        "dataType": "pbf",
+        "required": true,
+        "accept": ["pbf", "raw"],
+        "flag": "-s"
+      },
+      {
+        "id": "database_file",
+        "name": "Database File",
+        "dataType": "fasta",
+        "required": true,
+        "accept": ["fasta", "fa", "faa"],
+        "flag": "-d"
+      },
+      {
+        "id": "feature_file",
+        "name": "Feature File",
+        "dataType": "ms1ft",
+        "required": false,
+        "accept": ["ms1ft", "msalign", "isos.csv"],
+        "flag": "-feature"
+      }
+    ],
+    "outputs": [
+      {
+        "id": "ict_target",
+        "name": "Target Results",
+        "dataType": "tsv",
+        "pattern": "{sample}_IcTarget.tsv",
+        "handle": "ict_target",
+        "provides": ["tsv", "results"],
+        "conditional": "target_search"
+      },
+      {
+        "id": "ict_decoy",
+        "name": "Decoy Results",
+        "dataType": "tsv",
+        "pattern": "{sample}_IcDecoy.tsv",
+        "handle": "ict_decoy",
+        "provides": ["tsv", "results"],
+        "conditional": "decoy_search"
+      },
+      {
+        "id": "ict_tda",
+        "name": "TDA Results",
+        "dataType": "tsv",
+        "pattern": "{sample}_IcTda.tsv",
+        "handle": "ict_tda",
+        "provides": ["tsv", "results"],
+        "conditional": "tda_search"
+      },
+      {
+        "id": "mzid",
+        "name": "MZIdentML",
+        "dataType": "mzid",
+        "pattern": "{sample}.mzid",
+        "handle": "mzid",
+        "provides": ["mzid"]
+      },
+      {
+        "id": "ms1ft",
+        "name": "MS1 Feature File",
+        "dataType": "ms1ft",
+        "pattern": "{sample}.ms1ft",
+        "handle": "ms1ft",
+        "provides": ["ms1ft", "feature"],
+        "conditional": "no_feature_input"
+      },
+      {
+        "id": "feature_png",
+        "name": "Feature Heatmap",
+        "dataType": "png",
+        "pattern": "{sample}_ms1ft.png",
+        "handle": "feature_png",
+        "provides": ["png", "visualization"],
+        "conditional": "no_feature_input"
+      },
+      {
+        "id": "param",
+        "name": "Parameter File",
+        "dataType": "param",
+        "pattern": "{sample}.param",
+        "handle": "param",
+        "provides": ["param"]
+      }
+    ]
+  },
+  "parameters": {
+    "output_dir": {
+      "flag": "-o",
+      "type": "value",
+      "label": "Output Directory",
+      "description": "Output directory",
+      "group": "basic"
+    },
+    "search_mode": {
+      "flag": "-ic",
+      "type": "choice",
+      "label": "Search Mode",
+      "description": "Internal cleavage search mode",
+      "group": "basic",
+      "default": "1",
+      "choices": {
+        "No Internal Cleavage": "0",
+        "Single Internal Cleavage": "1",
+        "Multiple Internal Cleavages": "2"
+      }
+    },
+    "tag_search": {
+      "flag": "-tagSearch",
+      "type": "boolean",
+      "label": "Tag-based Search",
+      "description": "Include tag-based search",
+      "group": "advanced",
+      "default": true
+    },
+    "num_matches": {
+      "flag": "-n",
+      "type": "value",
+      "label": "Num Matches Per Spectrum",
+      "description": "Number of results to report for each mass spectrum",
+      "group": "advanced",
+      "default": "1"
+    },
+    "include_decoy": {
+      "flag": "-IncludeDecoy",
+      "type": "boolean",
+      "label": "Include Decoy Results",
+      "description": "Include decoy results in the _IcTda.tsv file",
+      "group": "advanced",
+      "default": false
+    },
+    "mod_file": {
+      "flag": "-mod",
+      "type": "value",
+      "label": "Modification File",
+      "description": "Path to modification file defining static and dynamic modifications",
+      "group": "basic"
+    },
+    "tda": {
+      "flag": "-tda",
+      "type": "choice",
+      "label": "Database Search Mode",
+      "description": "Target-decoy approach mode",
+      "group": "basic",
+      "default": "0",
+      "choices": {
+        "Target only": "0",
+        "Target + Decoy": "1"
+      }
+    },
+    "precursor_tolerance": {
+      "flag": "-t",
+      "type": "value",
+      "label": "Precursor Tolerance (PPM)",
+      "description": "Precursor tolerance in PPM",
+      "group": "basic",
+      "default": "10"
+    },
+    "fragment_tolerance": {
+      "flag": "-f",
+      "type": "value",
+      "label": "Fragment Tolerance (PPM)",
+      "description": "Fragment ion tolerance in PPM",
+      "group": "basic",
+      "default": "10"
+    },
+    "min_length": {
+      "flag": "-minLength",
+      "type": "value",
+      "label": "Min Sequence Length",
+      "description": "Minimum sequence length",
+      "group": "basic",
+      "default": "21"
+    },
+    "max_length": {
+      "flag": "-maxLength",
+      "type": "value",
+      "label": "Max Sequence Length",
+      "description": "Maximum sequence length",
+      "group": "basic",
+      "default": "500"
+    },
+    "min_charge": {
+      "flag": "-minCharge",
+      "type": "value",
+      "label": "Min Precursor Charge",
+      "description": "Minimum precursor ion charge",
+      "group": "basic",
+      "default": "1"
+    },
+    "max_charge": {
+      "flag": "-maxCharge",
+      "type": "value",
+      "label": "Max Precursor Charge",
+      "description": "Maximum precursor ion charge",
+      "group": "basic",
+      "default": "50"
+    },
+    "min_frag_charge": {
+      "flag": "-minFragCharge",
+      "type": "value",
+      "label": "Min Fragment Charge",
+      "description": "Minimum fragment ion charge",
+      "group": "advanced",
+      "default": "1"
+    },
+    "max_frag_charge": {
+      "flag": "-maxFragCharge",
+      "type": "value",
+      "label": "Max Fragment Charge",
+      "description": "Maximum fragment ion charge",
+      "group": "advanced",
+      "default": "20"
+    },
+    "min_mass": {
+      "flag": "-minMass",
+      "type": "value",
+      "label": "Min Mass",
+      "description": "Minimum sequence mass in Da",
+      "group": "basic",
+      "default": "3000"
+    },
+    "max_mass": {
+      "flag": "-maxMass",
+      "type": "value",
+      "label": "Max Mass",
+      "description": "Maximum sequence mass in Da",
+      "group": "basic",
+      "default": "50000"
+    },
+    "feature": {
+      "flag": "-feature",
+      "type": "value",
+      "label": "Feature File",
+      "description": "Path to *.ms1ft, *_isos.csv, or *.msalign file",
+      "group": "advanced"
+    },
+    "threads": {
+      "flag": "-threads",
+      "type": "value",
+      "label": "Threads",
+      "description": "Maximum number of threads (0 for automatic)",
+      "group": "basic",
+      "default": "0"
+    },
+    "activation": {
+      "flag": "-act",
+      "type": "choice",
+      "label": "Activation Method",
+      "description": "Activation method for fragmentation",
+      "group": "advanced",
+      "default": "6",
+      "choices": {
+        "CID": "0",
+        "ETD": "1",
+        "HCD": "2",
+        "ECD": "3",
+        "PQD": "4",
+        "UVPD": "5",
+        "Unknown": "6"
+      }
+    },
+    "scans_file": {
+      "flag": "-scansFile",
+      "type": "value",
+      "label": "Scans File",
+      "description": "Text file with MS2 scans to process",
+      "group": "advanced"
+    },
+    "flip": {
+      "flag": "-flip",
+      "type": "boolean",
+      "label": "FLIP Scoring",
+      "description": "Use FLIP scoring code (supports UVPD spectra)",
+      "group": "advanced",
+      "default": false
+    },
+    "param_file": {
+      "flag": "-ParamFile",
+      "type": "value",
+      "label": "Parameter File",
+      "description": "Path to a file containing program parameters",
+      "group": "advanced"
+    }
+  },
+  "output": {
+    "flagSupported": true,
+    "flag": "-o",
+    "flagValue": "."
+  }
+}
