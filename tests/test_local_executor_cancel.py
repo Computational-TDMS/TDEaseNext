@@ -5,6 +5,8 @@ Tests workflow cancellation through executor.
 """
 import pytest
 import asyncio
+import subprocess
+import sys
 from pathlib import Path
 from app.core.executor.local import LocalExecutor
 from app.core.executor.base import TaskSpec
@@ -28,11 +30,10 @@ class TestLocalExecutorCancel:
     @pytest.mark.asyncio
     async def test_cancel_task_with_process_registry(self, executor):
         """Test cancelling a task through process registry"""
-        import subprocess
         from app.core.executor.process_registry import process_registry
 
         # Create a long-running process manually
-        proc = subprocess.Popen(["sleep", "10"])
+        proc = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(10)"])
         task_id = "test-exec:node-1"
         process_registry.register(task_id, proc)
 
@@ -47,7 +48,6 @@ class TestLocalExecutorCancel:
     @pytest.mark.asyncio
     async def test_execute_with_task_id(self, executor, tmp_path):
         """Test that execute passes task_id to shell runner"""
-        import subprocess
         from unittest.mock import patch, MagicMock
 
         # Mock the run_shell function to capture task_id
@@ -58,8 +58,8 @@ class TestLocalExecutorCancel:
             captured_task_ids.append(task_id)
             # Don't actually run anything
 
-        # Patch run_shell in the shell_runner module
-        with patch('app.core.executor.shell_runner.run_shell', side_effect=mock_run_shell):
+        # Patch run_shell in the local executor module (imported symbol)
+        with patch('app.core.executor.local.run_shell', side_effect=mock_run_shell):
             spec = TaskSpec(
                 node_id="test-node",
                 tool_id="test-tool",
@@ -89,7 +89,7 @@ class TestLocalExecutorIntegration:
         # Create executor with a simple tool
         tools_registry = {
             "sleep-tool": {
-                "command": {"executable": "sleep"},
+                "command": {"executable": sys.executable},
                 "ports": {"inputs": [], "outputs": []},
             }
         }
@@ -103,7 +103,7 @@ class TestLocalExecutorIntegration:
             input_paths=[],
             output_paths=[],
             workspace_path=tmp_path,
-            cmd="sleep 10",  # Use pre-built command for simplicity
+            cmd=f"{sys.executable} -c \"import time; time.sleep(10)\"",  # Use pre-built command for simplicity
             task_id="test-exec:sleep-node"
         )
 

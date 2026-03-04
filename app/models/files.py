@@ -22,13 +22,6 @@ class DirectoryFileInfo(BaseModel):
     mime_type: str
     permissions: Dict[str, Any]
 
-    model_config = {
-        "json_encoders": {
-            datetime: lambda v: v.isoformat(),
-        }
-    }
-
-
 class FileUploadResponse(BaseModel):
     filename: str
     file_path: str
@@ -38,11 +31,6 @@ class FileUploadResponse(BaseModel):
     mime_type: str
     upload_time: datetime
     message: str
-
-    model_config = {
-        "json_encoders": {datetime: lambda v: v.isoformat()}
-    }
-
 
 class FileDownloadRequest(BaseModel):
     file_path: str
@@ -72,11 +60,6 @@ class WorkspaceInfo(BaseModel):
     permissions: Dict[str, Any]
     created_at: Optional[datetime] = None
     last_modified: Optional[datetime] = None
-
-    model_config = {
-        "json_encoders": {datetime: lambda v: v.isoformat()}
-    }
-
 
 class FileOperation(BaseModel):
     workspace_path: str

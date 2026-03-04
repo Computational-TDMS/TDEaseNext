@@ -2,7 +2,7 @@
 Workflow execution-related data models
 """
 
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, field_validator
 from typing import Dict, Any, List, Optional
 from datetime import datetime
 
@@ -23,14 +23,16 @@ class ExecutionRequest(BaseModel):
     config_overrides: Optional[Dict[str, Any]] = Field(None, description="Configuration overrides for execution")
     environment: Optional[Dict[str, Any]] = Field(None, description="Environment variables for execution")
 
-    @validator('workflow_id')
-    def validate_workflow_id(cls, v):
+    @field_validator("workflow_id")
+    @classmethod
+    def validate_workflow_id(cls, v: str) -> str:
         if not v or v.strip() == "":
             raise ValueError("Workflow ID is required")
         return v.strip()
 
-    @validator('sample_ids')
-    def validate_sample_ids(cls, v):
+    @field_validator("sample_ids")
+    @classmethod
+    def validate_sample_ids(cls, v: Optional[List[str]]) -> Optional[List[str]]:
         """If sample_ids is None, will load all samples from workspace"""
         return v  # Validation will happen in execution service
 
@@ -45,12 +47,6 @@ class ExecutionResponse(BaseModel):
     message: str = Field(..., description="Execution status message")
     start_time: Optional[datetime] = Field(None, description="Execution start time")
     estimated_duration: Optional[int] = Field(None, description="Estimated duration in seconds")
-
-    class Config:
-        json_encoders = {       
-            datetime: lambda v: v.isoformat()
-        }
-
 
 class ExecutionStatus(BaseModel):
     """Detailed execution status model"""
@@ -73,12 +69,6 @@ class ExecutionStatus(BaseModel):
     memory_usage: Optional[int] = Field(None, description="Memory usage in MB")
     log_lines: Optional[List[str]] = Field(None, description="Recent log lines")
 
-    class Config:
-        json_encoders = {
-            datetime: lambda v: v.isoformat()
-        }
-
-
 class ExecutionListItem(BaseModel):
     """Simplified execution model for list views"""
 
@@ -91,12 +81,6 @@ class ExecutionListItem(BaseModel):
     cores_used: int = Field(..., description="CPU cores used")
     sample_count: Optional[int] = Field(None, description="Number of samples")
 
-    class Config:
-        json_encoders = {
-            datetime: lambda v: v.isoformat()
-        }
-
-
 class ExecutionStopRequest(BaseModel):
     """Request for stopping execution"""
 
@@ -104,8 +88,9 @@ class ExecutionStopRequest(BaseModel):
     force: bool = Field(False, description="Whether to force stop immediately")
     cleanup: bool = Field(True, description="Whether to cleanup temporary files")
 
-    @validator('execution_id')
-    def validate_execution_id(cls, v):
+    @field_validator("execution_id")
+    @classmethod
+    def validate_execution_id(cls, v: str) -> str:
         if not v or v.strip() == "":
             raise ValueError("Execution ID is required")
         return v.strip()
@@ -120,8 +105,9 @@ class LogRequest(BaseModel):
     level: Optional[str] = Field(None, pattern="^(debug|info|warning|error|all)$",
                                  description="Log level filter")
 
-    @validator('execution_id')
-    def validate_execution_id(cls, v):
+    @field_validator("execution_id")
+    @classmethod
+    def validate_execution_id(cls, v: str) -> str:
         if not v or v.strip() == "":
             raise ValueError("Execution ID is required")
         return v.strip()
@@ -149,7 +135,3 @@ class ExecutionMetrics(BaseModel):
     network_io: Optional[int] = Field(None, description="Network I/O bytes")
     timestamp: datetime = Field(..., description="Metrics timestamp")
 
-    class Config:
-        json_encoders = {
-            datetime: lambda v: v.isoformat()
-        }

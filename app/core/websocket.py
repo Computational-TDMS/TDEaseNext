@@ -545,3 +545,7 @@ class ConnectionManager:
                 for workflow_id, subscribers in self.workflow_subscribers.items()
             }
         }
+
+
+# Global singleton used by API routes and execution log/status broadcasters
+manager = ConnectionManager()

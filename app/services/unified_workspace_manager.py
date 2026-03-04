@@ -14,10 +14,10 @@ import os
 import re
 import shutil
 import logging
-from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Any, Tuple
 from app.services.sample_store import sample_store, SampleValidationError
+from app.core.time_utils import utc_now_iso_z
 
 logger = logging.getLogger(__name__)
 
@@ -82,8 +82,8 @@ class UnifiedWorkspaceManager:
             "username": username,
             "email": email,
             "display_name": display_name or username,
-            "created_at": datetime.utcnow().isoformat() + "Z",
-            "updated_at": datetime.utcnow().isoformat() + "Z",
+            "created_at": utc_now_iso_z(),
+            "updated_at": utc_now_iso_z(),
             "settings": {
                 "default_workspace": None,
                 "max_workspaces": 10,
@@ -117,8 +117,8 @@ class UnifiedWorkspaceManager:
             "name": name,
             "description": description,
             "owner": user_id,
-            "created_at": datetime.utcnow().isoformat() + "Z",
-            "updated_at": datetime.utcnow().isoformat() + "Z",
+            "created_at": utc_now_iso_z(),
+            "updated_at": utc_now_iso_z(),
             "settings": {
                 "max_samples": 1000,
                 "retention_days": 30,
@@ -175,8 +175,8 @@ class UnifiedWorkspaceManager:
         samples_data = {
             "version": "1.0",
             "workspace_id": workspace_id,
-            "created_at": datetime.utcnow().isoformat() + "Z",
-            "updated_at": datetime.utcnow().isoformat() + "Z",
+            "created_at": utc_now_iso_z(),
+            "updated_at": utc_now_iso_z(),
             "samples": {}
         }
 
@@ -381,7 +381,7 @@ class UnifiedWorkspaceManager:
             "execution_id": execution_id,
             "workspace_id": workspace_id,
             "status": "created",
-            "created_at": datetime.utcnow().isoformat() + "Z",
+            "created_at": utc_now_iso_z(),
         }
 
         exec_file = exec_dir / "execution.json"
@@ -405,7 +405,7 @@ class UnifiedWorkspaceManager:
 
         meta["status"] = status
         if status in ("completed", "failed", "cancelled"):
-            meta["completed_at"] = datetime.utcnow().isoformat() + "Z"
+            meta["completed_at"] = utc_now_iso_z()
 
         meta.update(updates)
 
@@ -533,7 +533,7 @@ class UnifiedWorkspaceManager:
             "total_workflows": workflows_count,
             "total_executions": execution_count
         }
-        workspace_meta["updated_at"] = datetime.utcnow().isoformat() + "Z"
+        workspace_meta["updated_at"] = utc_now_iso_z()
 
         with open(workspace_file, 'w') as f:
             json.dump(workspace_meta, f, indent=2)

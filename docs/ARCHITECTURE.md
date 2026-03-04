@@ -1,7 +1,7 @@
 # TDEase 系统架构
 
-**更新日期**: 2026-03-02
-**版本**: 2.0 (新架构)
+**更新日期**: 2026-03-04
+**版本**: 2.1 (包含工作流取消功能)
 
 ## 目录
 
@@ -13,6 +13,7 @@
 - [核心组件](#核心组件)
 - [数据库设计](#数据库设计)
 - [执行流程](#执行流程)
+- [前端可扩展架构](#前端可扩展架构)
 
 ---
 
@@ -188,11 +189,13 @@ graph TB
         ToolRegistry[ToolRegistry<br/>工具定义加载]
         Pipeline[CommandPipeline<br/>5步命令构建]
         WorkspaceMgr[UnifiedWorkspaceManager<br/>工作区样品管理]
+        ProcessReg[ProcessRegistry<br/>进程注册表]
     end
 
     subgraph Services["服务层"]
         Normalizer[WorkflowNormalizer<br/>规范化]
         WFService[WorkflowService<br/>编排服务]
+        ExecMgr[ExecutionManager<br/>执行管理与取消]
         ExecStore[ExecutionStore<br/>执行存储]
     end
 
@@ -232,8 +235,12 @@ graph TB
     WFService --> FlowEngine
     FlowEngine --> LocalExecutor
     LocalExecutor --> ShellRunner
+    LocalExecutor --> ProcessReg
 
-    WFService --> ExecStore
+    WFService --> ExecMgr
+    ExecMgr --> ExecStore
+    EXEC_API --> ExecMgr
+    ExecMgr --> ProcessReg
 
     WF_API <--> WF
     EXEC_API <--> EXEC
@@ -248,6 +255,7 @@ graph TB
     style Database fill:#e8f5e9
     style Execution fill:#fce4ec
     style Files fill:#fff3e0
+    style ProcessReg fill:#ffccbc
 ```
 
 ### 新架构数据流
@@ -266,6 +274,14 @@ sequenceDiagram
     API->>Reg: load_tools()
     Reg-->>API: Tool Definitions
     API-->>F: Schema + Tools
+
+    Note over F,API: 1.5. 命令预览 (新增)
+    F->>API: POST /api/tools/preview
+    Note over F: {tool_id, param_values,<br/>input_files={}, output_target=null}
+    API->>Pipe: build_with_trace(preview_mode=True)
+    Pipe->>Pipe: 使用占位符 (<input_port>, <output_dir>)
+    Pipe-->>API: Command + Trace
+    API-->>F: "tool_cmd -p val -i <input> -o <output>"
 
     Note over F,Exec: 2. 执行工作流
     F->>API: POST /api/workflows/execute
@@ -312,6 +328,22 @@ sequenceDiagram
 7. **状态持久化** → ExecutionStore 更新到 SQLite
 8. **状态查询** → 前端查询 `GET /api/executions/{id}`
 9. **执行监控** → 前端通过 WebSocket (`/ws/executions/{id}`) 实时接收状态与日志；若 WebSocket 不可用则降级为每 2 秒轮询。当状态为 `completed`/`failed`/`cancelled` 时自动停止监控。
+
+### 工作流取消流程（新增）
+
+1. **用户发起取消** → `POST /api/executions/{id}/stop`
+2. **ExecutionManager.stop()** 执行取消操作：
+   - 获取所有运行中的节点（`running_nodes`）
+   - 遍历每个运行中的节点，调用 `ProcessRegistry.cancel(task_id)`
+3. **ProcessRegistry.cancel()** 执行两阶段终止：
+   - 发送 `SIGTERM` 信号给子进程
+   - 等待 3 秒让进程优雅退出
+   - 如果超时仍未退出，发送 `SIGKILL` 强制终止
+4. **状态更新**：
+   - 更新数据库状态为 "cancelled"
+   - 更新所有运行中节点状态为 "cancelled"
+   - 从 ProcessRegistry 中注销进程
+5. **前端响应** → 显示取消成功，停止实时监控
 
 ---
 
@@ -464,6 +496,42 @@ data/
 - `update_node_status(...)` - 更新节点状态
 - `get_nodes(execution_id)` - 获取所有节点状态
 
+### 9. ProcessRegistry (`app/core/executor/process_registry.py`)
+
+**职责**：全局进程注册表，管理运行中的子进程
+
+**主要特性**：
+- 线程安全的进程注册/注销操作（使用 `threading.Lock`）
+- 两阶段终止机制：SIGTERM（优雅终止，3秒超时）→ SIGKILL（强制终止）
+- 维护 `task_id → subprocess.Popen` 映射
+- 支持并发工作流执行
+- 防止进程泄漏（finally 块保证注销）
+
+**主要方法**：
+- `register(task_id, process)` - 注册运行中的进程
+- `unregister(task_id)` - 注销进程
+- `cancel(task_id, timeout=3)` - 取消进程（两阶段终止）
+- `get(task_id)` - 获取进程对象
+- `list_active()` - 列出所有活跃任务
+
+**Task ID 格式**：`{execution_id}:{node_id}`
+
+### 10. ExecutionManager (`app/services/runner.py`)
+
+**职责**：执行管理器，协调工作流执行和取消
+
+**主要特性**：
+- 维护内存中的执行记录（与 ExecutionStore 同步）
+- 追踪运行中的节点（`running_nodes: Set[str]`）
+- 集成 ProcessRegistry 实现真正的进程取消
+- 更新数据库状态为 "cancelled"
+
+**主要方法**：
+- `create(execution_id, workspace, workflow_id)` - 创建执行记录
+- `register_node_start(execution_id, node_id)` - 注册节点开始
+- `register_node_complete(execution_id, node_id)` - 注册节点完成
+- `stop(execution_id)` - 停止执行（取消所有运行中的节点）
+
 ---
 
 ## 数据库设计
@@ -591,6 +659,28 @@ def build(self, param_values, input_files, output_dir):
 
     return cmd
 ```
+
+---
+
+## 前端可扩展架构
+
+前端工作流编辑器（Vue + Vue Flow）为后续数据可视化和工具集成预留了可扩展设计，当前状态如下。
+
+### 数据处理与可视化（Section 8 准备）
+
+- **可扩展数据处理架构**（`TDEase-FrontEnd/src/types/data-processing.ts`）：定义 `DataPipeline`、`DataPipelineStage`、`IDataProcessor` 等接口，支持后续接入多阶段数据处理管线。
+- **TSV 数据接口占位**：同文件内定义 `ITSVDataHandler`、`TSVLoadOptions`、`TSVParseResult`，为 TSV/CSV 加载与解析预留接口。
+- **可视化组件注册**（`TDEase-FrontEnd/src/services/visualization/registry.ts`）：`registerVisualization(type, component)`、`getVisualization(type)`、`listVisualizations()`，便于后续注册 featuremap、spectrum、table 等视图组件。
+- **数据表格查看器占位**（`TDEase-FrontEnd/src/components/visualization/DataTableViewerPlaceholder.vue`）：为接入 AG-Grid 或等效表格组件的占位 UI。
+- **氨基酸序列编辑占位**：同 `data-processing.ts` 中定义 `ISequenceEditor`、`SequenceEditorState`、`SequenceAnnotation`，为后续序列编辑功能预留接口。
+
+### 工具注册与插件（Section 9 基础）
+
+- **后端工具注册接口**（`TDEase-FrontEnd/src/types/tool-registration.ts`）：`IBackendToolRegistration`、`IToolRegistryAdapter`，与现有 `/api/tools/schemas` 及 `useToolsRegistry` 对齐，便于扩展多数据源。
+- **动态节点类型加载**：同文件内 `INodeTypeLoader`、`NodeTypeRegistration`，支持按工具/类型动态注册 Vue Flow 节点组件。
+- **工具元数据管理**：`ToolMetadata`、`IToolMetadataManager`，用于 UI 展示、分类与发现。
+- **复杂工具配置 UI**：`ToolConfigUIDescriptor`、`IConfigUIRegistry`，支持分节、折叠与自定义组件。
+- **社区插件架构占位**：`IWorkflowEditorPlugin`、`PluginContext`，为未来插件化注册节点类型、工具、可视化组件预留入口。
 
 ---
 

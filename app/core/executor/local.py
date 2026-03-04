@@ -5,6 +5,7 @@ FlowEngine 原生本地执行器，使用 ShellRunner 执行命令，支持 Cond
 集成进程注册表以支持进程取消功能。
 """
 import asyncio
+import json
 import logging
 import platform
 import shlex
@@ -35,7 +36,10 @@ def _run_shell(
     task_id: str = "",
 ) -> None:
     """同步执行 Shell 命令，支持 Conda，可选 log_callback 捕获 stdout/stderr"""
-    cmd_str = _cmd_parts_to_shell_string(cmd_parts)
+    if len(cmd_parts) == 1 and isinstance(cmd_parts[0], str):
+        cmd_str = cmd_parts[0]
+    else:
+        cmd_str = _cmd_parts_to_shell_string(cmd_parts)
     run_shell(cmd=cmd_str, workdir=workdir, conda_env=conda_env, log_callback=log_callback, task_id=task_id)
 
 
@@ -51,6 +55,14 @@ class LocalExecutor(Executor):
         if spec.cmd:
             # Use pre-built command if provided
             cmd_parts = [spec.cmd]
+            trace_payload = {
+                "tool_id": spec.tool_id,
+                "execution_mode": "prebuilt",
+                "node_id": spec.node_id,
+                "cmd_parts": cmd_parts,
+                "input_files": {k: str(v) for k, v in (spec.input_files or {}).items()},
+                "params": spec.params,
+            }
         else:
             # Build command using new CommandPipeline
             pipeline = CommandPipeline(tool_info)
@@ -77,18 +89,25 @@ class LocalExecutor(Executor):
                 logger.info(f"[LocalExecutor] Using spec.input_paths fallback: {input_files}")
 
             # Determine output directory
-            output_dir = str(spec.output_paths[0].parent) if spec.output_paths else None
+            output_target = str(spec.output_paths[0]) if spec.output_paths else None
 
             logger.info(f"[LocalExecutor] Building command for tool {spec.tool_id}")
             # Build command
-            cmd_parts = pipeline.build(
+            cmd_parts, trace = pipeline.build_with_trace(
                 param_values=spec.params,
                 input_files=input_files,
-                output_dir=output_dir
+                output_target=output_target
             )
+            trace_payload = trace.to_dict()
+            trace_payload["node_id"] = spec.node_id
 
         conda = spec.conda_env or tool_info.get("conda_env")
         log_cb = getattr(spec, "log_callback", None)
+        if log_cb:
+            try:
+                log_cb(f"[command_trace] {json.dumps(trace_payload, ensure_ascii=False)}", "info")
+            except Exception:
+                logger.exception("[LocalExecutor] Failed to emit command trace")
         task_id = getattr(spec, "task_id", "")
         await asyncio.to_thread(_run_shell, cmd_parts, spec.workspace_path, conda, log_cb, task_id)
 

@@ -6,9 +6,9 @@ import sqlite3
 import logging
 import re
 from typing import Dict, Any, Optional, List
-from datetime import datetime
 from pathlib import Path
 from app.database.init_db import get_database_connection
+from app.core.time_utils import utc_now_iso_z
 
 logger = logging.getLogger(__name__)
 
@@ -167,7 +167,7 @@ class SampleStore:
             with self._conn() as conn:
                 cursor = conn.cursor()
 
-                now = datetime.utcnow().isoformat() + "Z"
+                now = utc_now_iso_z()
 
                 cursor.execute("SELECT id FROM samples WHERE id = ?", (sample_id,))
                 exists = cursor.fetchone() is not None

@@ -141,7 +141,7 @@ def test_add_new_sample():
     print("Testing Add New Sample")
     print("=" * 60)
 
-    manager = get_workspace_manager("data")
+    manager = get_unified_workspace_manager("data")
 
     # Add a new sample
     print("\n1. Adding new sample...")

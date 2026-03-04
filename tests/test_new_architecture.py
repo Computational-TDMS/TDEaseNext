@@ -42,10 +42,7 @@ def test_sample_context_loading():
         print(f"  Input basename: {context.get('input_basename')}")
         print(f"  Extension: {context.get('input_ext')}")
         print()
-        return True
-    else:
-        print(f"[FAIL] Cannot load sample context: {sample_id}")
-        return False
+    assert context, f"Cannot load sample context: {sample_id}"
 
 
 def test_samples_listing():
@@ -66,10 +63,7 @@ def test_samples_listing():
         for s in samples:
             print(f"  - {s.get('id')}: {s.get('name', 'N/A')}")
         print()
-        return True
-    else:
-        print(f"[FAIL] No samples found in workspace")
-        return False
+    assert samples, "No samples found in workspace"
 
 
 def test_workspace_structure():
@@ -90,7 +84,7 @@ def test_workspace_structure():
             print(f"  Sample count: {len(data.get('samples', {}))}")
     else:
         print(f"[FAIL] samples.json does not exist")
-        return False
+        assert False, "samples.json does not exist"
 
     # Check workflows directory
     workflows_dir = base_path / "workflows"
@@ -101,7 +95,6 @@ def test_workspace_structure():
         print(f"[INFO] Workflows directory does not exist (optional)")
 
     print()
-    return True
 
 
 def test_api_payload_format():
@@ -122,7 +115,6 @@ def test_api_payload_format():
     print()
     print("[OK] New format is clean - no more sample_context needed!")
     print()
-    return True
 
 
 def main():
@@ -142,7 +134,8 @@ def main():
     results = []
     for name, test_func in tests:
         try:
-            result = test_func()
+            test_func()
+            result = True
             results.append((name, result))
         except Exception as e:
             print(f"[FAIL] Test failed: {name}")

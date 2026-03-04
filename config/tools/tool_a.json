@@ -23,6 +23,7 @@
   "parameters": {},
   "output": {
     "flagSupported": true,
-    "flag": "-o"
+    "flag": "-o",
+    "flagValue": "{output_path}"
   }
 }

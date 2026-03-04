@@ -16,12 +16,6 @@ class APIError(BaseModel):
     request_id: Optional[str] = Field(None, description="Unique request identifier")
     timestamp: Optional[datetime] = Field(None, description="Error timestamp")
 
-    class Config:
-        json_encoders = {
-            datetime: lambda v: v.isoformat()
-        }
-
-
 class SuccessResponse(BaseModel):
     """Standard API success response model"""
 
@@ -29,12 +23,6 @@ class SuccessResponse(BaseModel):
     message: str = Field(..., description="Success message")
     data: Optional[Dict[str, Any]] = Field(None, description="Optional response data")
     timestamp: Optional[datetime] = Field(None, description="Response timestamp")
-
-    class Config:
-        json_encoders = {
-            datetime: lambda v: v.isoformat()
-        }
-
 
 class FileInfo(BaseModel):
     """File information model"""
@@ -47,12 +35,6 @@ class FileInfo(BaseModel):
     modified_at: Optional[datetime] = Field(None, description="File modification time")
     is_readable: Optional[bool] = Field(None, description="File read permission")
     is_writable: Optional[bool] = Field(None, description="File write permission")
-
-    class Config:
-        json_encoders = {
-            datetime: lambda v: v.isoformat()
-        }
-
 
 class PaginationInfo(BaseModel):
     """Pagination information model"""

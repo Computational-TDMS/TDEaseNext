@@ -24,15 +24,17 @@
         "description": "TopPIC FeatureMap output file (optional)"
       }
     ],
-    "outputs": [
-      {
-        "id": "selection",
-        "name": "Selection",
-        "dataType": "selection",
-        "required": false,
-        "description": "Selected features for downstream processing"
-      }
-    ]
+      "outputs": [
+        {
+          "id": "selection",
+          "name": "Selection",
+          "dataType": "selection",
+          "required": false,
+          "description": "Selected features for downstream processing",
+          "portKind": "state-out",
+          "semanticType": "state/selection_ids"
+        }
+      ]
   },
   "parameters": {
     "min_prob": {

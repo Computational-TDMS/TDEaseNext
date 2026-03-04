@@ -2,7 +2,7 @@
 Tool registry and management data models
 """
 
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, field_validator
 from typing import Dict, Any, List, Optional, Union
 from datetime import datetime
 
@@ -45,12 +45,6 @@ class ToolInfo(BaseModel):
     positional_params: Optional[List[str]] = Field(None, description="Positional parameter names")
     output_flag_supported: bool = Field(True, description="Whether tool supports output directory flag")
 
-    class Config:
-        json_encoders = {
-            datetime: lambda v: v.isoformat()
-        }
-
-
 class ToolRegistration(BaseModel):
     """Model for registering a new tool"""
 
@@ -66,14 +60,16 @@ class ToolRegistration(BaseModel):
     positional_params: Optional[List[str]] = Field(None, description="Positional parameter names")
     output_flag_supported: bool = Field(True, description="Support for output directory flag")
 
-    @validator('tool_type')
-    def validate_tool_type(cls, v):
+    @field_validator("tool_type")
+    @classmethod
+    def validate_tool_type(cls, v: str) -> str:
         if not v or v.strip() == "":
             raise ValueError("Tool type is required")
         return v.strip()
 
-    @validator('tool_path')
-    def validate_tool_path(cls, v):
+    @field_validator("tool_path")
+    @classmethod
+    def validate_tool_path(cls, v: str) -> str:
         if not v or v.strip() == "":
             raise ValueError("Tool path is required")
         return v.strip()
@@ -88,12 +84,6 @@ class ToolValidationResult(BaseModel):
     validation_message: Optional[str] = Field(None, description="Validation result message")
     version_info: Optional[str] = Field(None, description="Tool version if available")
     validation_time: datetime = Field(..., description="Validation timestamp")
-
-    class Config:
-        json_encoders = {
-            datetime: lambda v: v.isoformat()
-        }
-
 
 class ToolSchema(BaseModel):
     """JSON schema for tool parameters"""
@@ -121,7 +111,3 @@ class ToolListResponse(BaseModel):
     platform: str = Field(..., description="Current platform")
     cache_timestamp: Optional[datetime] = Field(None, description="Cache generation time")
 
-    class Config:
-        json_encoders = {
-            datetime: lambda v: v.isoformat()
-        }

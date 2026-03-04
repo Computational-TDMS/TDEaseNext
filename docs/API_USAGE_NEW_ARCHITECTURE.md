@@ -218,3 +218,29 @@ POST /api/users/{user_id}/workspaces/{workspace_id}/samples
   "detail": "Cannot resolve placeholders in pattern '{sample}_ms2.msalign': missing ['sample']. Available: ['fasta_filename']"
 }
 ```
+
+## 获取节点命令追踪
+
+### API 端点
+```
+GET /api/executions/{execution_id}/nodes/{node_id}/trace
+```
+
+### 响应示例
+```json
+{
+  "execution_id": "exec-abc-123",
+  "node_id": "pbfgen_1",
+  "command_trace": {
+    "tool_id": "pbfgen",
+    "filtered_params": {},
+    "input_files": {"input_file": "demo.raw"},
+    "input_flags": ["-i", "demo.raw"],
+    "positional_args": [],
+    "cmd_parts": ["python.exe", "mock_pbfgen.py", "-i", "demo.raw"],
+    "output_flag": {"flag": "-o", "value": "workspace/demo.pbf"}
+  }
+}
+```
+
+使用该 endpoint 可直接获取每个节点最终的 CLI 构建结果，无需解析日志。

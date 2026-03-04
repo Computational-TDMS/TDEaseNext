@@ -171,11 +171,21 @@ class DatabaseInitializer:
                 end_time TEXT,
                 progress INTEGER DEFAULT 0,
                 log_path TEXT,
+                command_trace TEXT,
                 error_message TEXT,
                 created_at TEXT NOT NULL,
                 FOREIGN KEY (execution_id) REFERENCES executions (id) ON DELETE CASCADE
             )
         """)
+        # Migration: add command_trace column for existing tables
+        try:
+            cursor = conn.cursor()
+            cursor.execute("PRAGMA table_info(execution_nodes)")
+            cols = {row[1] for row in cursor.fetchall()}
+            if "command_trace" not in cols:
+                conn.execute("ALTER TABLE execution_nodes ADD COLUMN command_trace TEXT")
+        except Exception as e:
+            logger.debug(f"Execution nodes table migration note: {e}")
 
     def _create_tools_table(self, conn: sqlite3.Connection):
         """Create tools table"""
@@ -384,6 +394,9 @@ def get_database_connection(db_path: Optional[str] = None) -> sqlite3.Connection
                     initializer._create_executions_table(conn)
                 if "execution_nodes" not in existing_tables:
                     logger.info("Migration: Creating execution_nodes table")
+                    initializer._create_execution_nodes_table(conn)
+                else:
+                    # Run column-level migrations for existing execution_nodes table
                     initializer._create_execution_nodes_table(conn)
                 if "tools" not in existing_tables:
                     logger.info("Migration: Creating tools table")

@@ -103,6 +103,16 @@
               "pattern": {
                 "type": "string",
                 "description": "File path pattern (for input files)"
+              },
+              "portKind": {
+                "type": "string",
+                "enum": ["data", "state-in", "state-out"],
+                "description": "Port category for connection validation",
+                "default": "data"
+              },
+              "semanticType": {
+                "type": "string",
+                "description": "Semantic type for state ports (state-in/state-out)"
               }
             }
           }
@@ -138,6 +148,16 @@
                 "type": "array",
                 "items": {"type": "string"},
                 "description": "Data types this output provides"
+              },
+              "portKind": {
+                "type": "string",
+                "enum": ["data", "state-in", "state-out"],
+                "description": "Port category for connection validation",
+                "default": "data"
+              },
+              "semanticType": {
+                "type": "string",
+                "description": "Semantic type conveyed by this port"
               }
             }
           }

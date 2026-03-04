@@ -16,13 +16,33 @@ import logging
 import shlex
 import platform
 import os
+from dataclasses import dataclass, asdict
 from pathlib import Path
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
 
 # Project root: app/core/executor/command_pipeline.py -> ../../../ = project
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent.parent
+
+
+@dataclass
+class CommandAssemblyTrace:
+    tool_id: str
+    execution_mode: str
+    executable: str
+    filtered_params: Dict[str, Any]
+    input_files: Dict[str, str]
+    output_target: str
+    output_flag: Dict[str, str]
+    parameter_flags: List[str]
+    input_flags: List[str]
+    params_json: str
+    positional_args: List[str]
+    cmd_parts: List[str]
+
+    def to_dict(self) -> Dict[str, Any]:
+        return asdict(self)
 
 
 class CommandPipeline:
@@ -37,12 +57,13 @@ class CommandPipeline:
     5. Positional: Add positional arguments in order
     """
 
-    def __init__(self, tool_def: Dict[str, Any]):
+    def __init__(self, tool_def: Dict[str, Any], preview_mode: bool = False):
         """
         Initialize command pipeline with tool definition.
 
         Args:
             tool_def: Tool definition from config/tools/*.json
+            preview_mode: If True, use placeholders instead of actual file paths
         """
         self.tool_def = tool_def
         self.execution_mode = tool_def.get("executionMode", "native")
@@ -50,12 +71,13 @@ class CommandPipeline:
         self.ports = tool_def.get("ports", {})
         self.parameters = tool_def.get("parameters", {})
         self.output_config = tool_def.get("output", {})
+        self.preview_mode = preview_mode
 
     def build(
         self,
         param_values: Dict[str, Any],
         input_files: Dict[str, str],
-        output_dir: Optional[str] = None
+        output_target: Optional[str] = None
     ) -> List[str]:
         """
         Build complete command as list of arguments.
@@ -68,18 +90,27 @@ class CommandPipeline:
         Returns:
             List of command arguments (e.g., ["toppic", "-a", "21.0", "db.fasta", "input.msalign"])
         """
+        cmd_parts, _trace = self.build_with_trace(param_values, input_files, output_target)
+        return cmd_parts
+
+    def build_with_trace(
+        self,
+        param_values: Dict[str, Any],
+        input_files: Dict[str, str],
+        output_target: Optional[str] = None
+    ) -> Tuple[List[str], CommandAssemblyTrace]:
         # Step 1: Filter empty parameters
         filtered_params = self._filter_empty_params(param_values)
 
         # Step 2: Resolve executable
         executable = self._resolve_executable()
-        
+
         logger.info(f"[CommandPipeline] Building command for tool: {self.tool_def.get('id', 'unknown')}")
         logger.info(f"[CommandPipeline] input_files: {input_files}")
         logger.info(f"[CommandPipeline] filtered_params: {filtered_params}")
-        
+
         # cmd_parts 为原始参数列表，由 LocalExecutor 用 list2cmdline/shlex.join 统一加引号，此处不包一层引号
-        cmd_parts = []
+        cmd_parts: List[str] = []
         if self.execution_mode == "script":
             parts = executable.split(" ")
             for part in parts:
@@ -89,14 +120,31 @@ class CommandPipeline:
             if executable:
                 cmd_parts = [executable]
 
-        # Step 3: Add output flag
-        if output_dir and self.output_config.get("flagSupported"):
+        output_flag_info = {"flag": "", "value": ""}
+        # Step 3: Add output flag (path or directory depending on tool config)
+        if self.output_config.get("flagSupported"):
             output_flag = self.output_config.get("flag", "-o")
-            output_value = self.output_config.get("flagValue", output_dir)
-            cmd_parts.extend([output_flag, output_value])
+
+            # In preview mode, use placeholder if no output target provided
+            if self.preview_mode:
+                output_value = output_target or "<output_dir>"
+            elif output_target:
+                output_dir = str(Path(output_target).parent)
+                template = self.output_config.get("flagValue")
+                if template:
+                    output_value = template.format(output_path=output_target, output_dir=output_dir)
+                else:
+                    output_value = output_dir
+            else:
+                output_value = None
+
+            if output_value:
+                output_flag_info = {"flag": output_flag, "value": output_value}
+                cmd_parts.extend([output_flag, output_value])
 
         # Step 4: Add parameter flags
-        cmd_parts.extend(self._build_parameter_flags(filtered_params))
+        parameter_flags = self._build_parameter_flags(filtered_params)
+        cmd_parts.extend(parameter_flags)
 
         # Step 4b: Add input flags (for inputs with flag attribute)
         input_flags = self._build_input_flags(input_files)
@@ -104,6 +152,7 @@ class CommandPipeline:
         cmd_parts.extend(input_flags)
 
         # Step 4c: Add --params JSON for scripts that need extra params (e.g. sample_name)
+        params_json = ""
         if self.tool_def.get("useParamsJson") or self.tool_def.get("use_params_json"):
             # 排除前端/内部字段，只传脚本需要的参数
             internal_keys = {"tool_type", "type"}
@@ -117,7 +166,21 @@ class CommandPipeline:
         cmd_parts.extend(positional_args)
 
         logger.info(f"[CommandPipeline] Final cmd_parts: {cmd_parts}")
-        return cmd_parts
+        trace = CommandAssemblyTrace(
+            tool_id=self.tool_def.get("id", "unknown"),
+            execution_mode=self.execution_mode,
+            executable=executable,
+            filtered_params=filtered_params,
+            input_files=dict(input_files),
+            output_target=output_target or "",
+            output_flag=output_flag_info,
+            parameter_flags=parameter_flags,
+            input_flags=input_flags,
+            params_json=params_json,
+            positional_args=positional_args,
+            cmd_parts=list(cmd_parts),
+        )
+        return cmd_parts, trace
 
     def _filter_empty_params(self, params: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -250,10 +313,19 @@ class CommandPipeline:
         for inp in inputs:
             port_id = inp.get("id", "")
             flag = inp.get("flag", "")
-            file_path = input_files.get(port_id, "")
 
-            # Skip if no flag, no file path, or if it's a positional input
-            if not flag or not file_path or inp.get("positional", False):
+            # Skip if no flag or if it's a positional input
+            if not flag or inp.get("positional", False):
+                continue
+
+            # In preview mode, use placeholder if no file path provided
+            if self.preview_mode:
+                file_path = input_files.get(port_id, f"<{port_id}>")
+            else:
+                file_path = input_files.get(port_id, "")
+
+            # Skip if no file path (unless in preview mode)
+            if not file_path:
                 continue
 
             # Add flag and file path
@@ -282,7 +354,14 @@ class CommandPipeline:
         # Build arguments
         for inp in positional_inputs:
             port_id = inp.get("id", "")
-            file_path = input_files.get(port_id, "")
+
+            # In preview mode, use placeholder if no file path provided
+            if self.preview_mode:
+                file_path = input_files.get(port_id, f"<{port_id}>")
+            else:
+                file_path = input_files.get(port_id, "")
+
+            # Skip if no file path (unless in preview mode)
             if file_path:
                 args.append(file_path)
 
@@ -307,7 +386,7 @@ def build_command(
     tool_def: Dict[str, Any],
     param_values: Dict[str, Any],
     input_files: Dict[str, str],
-    output_dir: Optional[str] = None
+    output_target: Optional[str] = None
 ) -> List[str]:
     """
     Convenience function to build a command from tool definition.
@@ -322,14 +401,27 @@ def build_command(
         List of command arguments
     """
     pipeline = CommandPipeline(tool_def)
-    return pipeline.build(param_values, input_files, output_dir)
+    return pipeline.build(param_values, input_files, output_target)
+
+
+def build_command_with_trace(
+    tool_def: Dict[str, Any],
+    param_values: Dict[str, Any],
+    input_files: Dict[str, str],
+    output_target: Optional[str] = None
+) -> Tuple[List[str], CommandAssemblyTrace]:
+    """
+    Build command and return structured assembly trace.
+    """
+    pipeline = CommandPipeline(tool_def)
+    return pipeline.build_with_trace(param_values, input_files, output_target)
 
 
 def build_command_string(
     tool_def: Dict[str, Any],
     param_values: Dict[str, Any],
     input_files: Dict[str, str],
-    output_dir: Optional[str] = None
+    output_target: Optional[str] = None
 ) -> str:
     """
     Build command as a single string (for display/logging).
@@ -343,5 +435,5 @@ def build_command_string(
     Returns:
         Command as a single string
     """
-    parts = build_command(tool_def, param_values, input_files, output_dir)
+    parts = build_command(tool_def, param_values, input_files, output_target)
     return " ".join(parts)

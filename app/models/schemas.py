@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from typing import List, Optional, Dict, Any
 
 class ToolParam(BaseModel):
@@ -23,6 +23,8 @@ class ToolPort(BaseModel):
     handle: Optional[str] = None
     accept: Optional[List[str]] = None
     provides: Optional[List[str]] = None
+    portKind: Optional[str] = "data"
+    semanticType: Optional[str] = None
 
 class DockerConfig(BaseModel):
     image: Optional[str] = None
@@ -123,8 +125,7 @@ class WorkflowJSON(BaseModel):
     outputs: Optional[Dict[str, WorkflowOutput]] = None  # Galaxy format workflow outputs
     projectSettings: Dict[str, Any]
     
-    class Config:
-        populate_by_name = True
+    model_config = ConfigDict(populate_by_name=True)
 
 class ExecuteRequest(BaseModel):
     workflow: WorkflowJSON
@@ -145,6 +146,7 @@ class NodeStatus(BaseModel):
     start_time: Optional[str] = None
     end_time: Optional[str] = None
     error_message: Optional[str] = None
+    command_trace: Optional[Dict[str, Any]] = None
 
 class WorkflowExecutionResponse(BaseModel):
     executionId: str

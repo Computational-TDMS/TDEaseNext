@@ -26,6 +26,7 @@ from app.core.platform_manager import get_platform_manager
 from app.core.permission_manager import PermissionManager, get_permission_manager
 from app.services.workflow_format import validate_workflow_document
 from app.services.workflow_diff import has_structure_changed
+from app.core.time_utils import utc_now, utc_now_iso_z
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -716,12 +717,18 @@ async def _run_workflow_background(
 ) -> None:
     """后台执行工作流，完成后更新 execution_store 与 execution_manager"""
     execution_store = workflow_service.execution_store
+    event_loop = asyncio.get_running_loop()
+    try:
+        from app.core.websocket import manager as ws_manager
+    except Exception:
+        ws_manager = None
 
     async def _broadcast_status(status: str, progress: int = None):
         """Broadcast status update to WebSocket"""
         try:
-            from app.core.websocket import manager
-            await manager.broadcast_to_execution(execution_id, {
+            if not ws_manager:
+                return
+            await ws_manager.broadcast_to_execution(execution_id, {
                 "type": "status",
                 "status": status,
                 "progress": progress,
@@ -732,13 +739,41 @@ async def _run_workflow_background(
 
     def _make_log_callback(eid: str):
         def _cb(msg: str, level: str = "info"):
+            node_id = None
+            if isinstance(msg, str) and msg.startswith("[command_trace] "):
+                try:
+                    trace_payload = json.loads(msg.split("[command_trace] ", 1)[1])
+                    node_id = trace_payload.get("node_id")
+                    if node_id:
+                        execution_store.update_node_command_trace(eid, node_id, trace_payload)
+                except Exception as e:
+                    logger.warning("Failed to persist command trace for execution %s: %s", eid, e)
+
+            log_entry = {
+                "timestamp": utc_now_iso_z(),
+                "level": (level or "info").lower(),
+                "message": msg,
+            }
+            if node_id:
+                log_entry["node_id"] = node_id
             ex = execution_manager.get(eid)
             if ex:
-                ex.logs.append({
-                    "timestamp": datetime.utcnow().isoformat() + "Z",
-                    "level": level,
-                    "message": msg,
-                })
+                ex.logs.append(log_entry)
+            if ws_manager:
+                try:
+                    asyncio.run_coroutine_threadsafe(
+                        ws_manager.broadcast_to_execution(
+                            eid,
+                            {
+                                "type": "log",
+                                "data": log_entry,
+                                "execution_id": eid,
+                            },
+                        ),
+                        event_loop,
+                    )
+                except Exception:
+                    pass
         return _cb
 
     log_cb = _make_log_callback(execution_id) if not (dryrun or simulate) else None
@@ -764,7 +799,7 @@ async def _run_workflow_background(
         execution_manager.update_status(
             execution_id,
             exec_status,
-            end_time=datetime.utcnow().isoformat() + "Z",
+            end_time=utc_now_iso_z(),
             progress=100 if exec_status == "completed" else 0,
         )
 
@@ -775,7 +810,7 @@ async def _run_workflow_background(
             ex = execution_manager.get(execution_id)
             if ex:
                 ex.logs.append({
-                    "timestamp": datetime.utcnow().isoformat() + "Z",
+                    "timestamp": utc_now_iso_z(),
                     "level": "error",
                     "message": exec_error,
                 })
@@ -785,7 +820,7 @@ async def _run_workflow_background(
         execution_manager.update_status(
             execution_id,
             "failed",
-            end_time=datetime.utcnow().isoformat() + "Z",
+            end_time=utc_now_iso_z(),
             progress=0,
         )
 
@@ -795,7 +830,7 @@ async def _run_workflow_background(
         ex = execution_manager.get(execution_id)
         if ex:
             ex.logs.append({
-                "timestamp": datetime.utcnow().isoformat() + "Z",
+                "timestamp": utc_now_iso_z(),
                 "level": "error",
                 "message": str(e),
             })
@@ -837,7 +872,7 @@ async def execute(
         metadata = wf_v2.get("metadata", {}) or {}
         edges = wf_v2.get("edges", [])
         logger.info("Execute workflow edges: %s", [(e.get("source"), "->", e.get("target")) for e in edges])
-        workflow_id = str(metadata.get("id") or f"wf_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}")
+        workflow_id = str(metadata.get("id") or f"wf_{utc_now().strftime('%Y%m%d_%H%M%S')}")
 
         # ===== 工作区路径：新架构用 workspace 目录，兼容旧格式用 data/workflows/{workflow_id} =====
         user_id = request_data.get("user_id") if isinstance(request_data, dict) else None
@@ -867,7 +902,7 @@ async def execute(
                     "description": metadata.get("description", ""),
                     "vueflow_data": wf_v2,
                     "workspace_path": str(workspace_dir),
-                    "created_at": datetime.utcnow().isoformat(),
+                    "created_at": utc_now_iso_z(),
                     "status": "created",
                     "metadata": metadata,
                     "workflow_format": "vueflow",
@@ -935,7 +970,7 @@ async def execute(
 
         execution_store.create(execution_id, workflow_id, str(workspace_dir), sample_id, workflow_snapshot)
         execution_manager.create(execution_id, str(workspace_dir), workflow_id)
-        execution_manager.update_status(execution_id, "running", start_time=datetime.utcnow().isoformat() + "Z")
+        execution_manager.update_status(execution_id, "running", start_time=utc_now_iso_z())
         execution_store.start(execution_id)
         for node in wf_v2.get("nodes", []):
             nid = node.get("id")
@@ -953,8 +988,8 @@ async def execute(
             return WorkflowExecutionResponse(
                 executionId=execution_id,
                 status=ex.status if ex else "completed",
-                startTime=ex.start_time or datetime.utcnow().isoformat() + "Z",
-                endTime=ex.end_time or datetime.utcnow().isoformat() + "Z",
+                startTime=ex.start_time or utc_now_iso_z(),
+                endTime=ex.end_time or utc_now_iso_z(),
                 progress=ex.progress if ex else 100,
                 logs=resp_logs,
                 nodes=[{"node_id": n["node_id"], "status": n["status"]} for n in execution_store.get_nodes(execution_id)],
@@ -969,7 +1004,7 @@ async def execute(
             return WorkflowExecutionResponse(
                 executionId=execution_id,
                 status="running",
-                startTime=datetime.utcnow().isoformat() + "Z",
+                startTime=utc_now_iso_z(),
                 endTime=None,
                 progress=0,
                 logs=[],
@@ -1077,7 +1112,7 @@ async def save_batch_config(
             UPDATE workflows
             SET batch_config = ?, updated_at = ?
             WHERE id = ?
-        """, (batch_config_json, datetime.utcnow().isoformat(), workflow_id))
+        """, (batch_config_json, utc_now_iso_z(), workflow_id))
         db.commit()
         
         logger.info(f"Batch config saved for workflow {workflow_id}")
@@ -1269,7 +1304,7 @@ async def execute_batch(
 
             store.create(execution_id, workflow_id, str(workspace_dir), workflow_snapshot)
             execution_manager.create(execution_id, str(workspace_dir), workflow_id)
-            execution_manager.update_status(execution_id, "running", start_time=datetime.utcnow().isoformat() + "Z")
+            execution_manager.update_status(execution_id, "running", start_time=utc_now_iso_z())
             store.start(execution_id)
 
             # 创建节点记录
@@ -1300,15 +1335,15 @@ async def execute_batch(
             execution_manager.update_status(
                 execution_id,
                 result.get("status", "completed"),
-                end_time=datetime.utcnow().isoformat() + "Z",
+                end_time=utc_now_iso_z(),
                 progress=100 if result.get("status") == "completed" else 0,
             )
 
             execution_responses.append(WorkflowExecutionResponse(
                 executionId=execution_id,
                 status=result.get("status", "completed"),
-                startTime=datetime.utcnow().isoformat() + "Z",
-                endTime=datetime.utcnow().isoformat() + "Z",
+                startTime=utc_now_iso_z(),
+                endTime=utc_now_iso_z(),
                 progress=100 if result.get("status") == "completed" else 0,
                 logs=[],
                 nodes=[{"node_id": k, "status": v} for k, v in result.get("nodes", {}).items()],
@@ -1361,3 +1396,4 @@ async def get_latest_execution(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to get latest execution: {str(e)}"
         )
+

@@ -5,7 +5,7 @@ Tool JSON Schema - 工具定义规范
 工具配置由后端运行环境决定，存储在 data/tools/ 和 config/tools/。
 """
 from typing import Any, Dict, List, Optional, Union
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class ToolParamDef(BaseModel):
@@ -91,9 +91,7 @@ class ToolDefinition(BaseModel):
     )
     use_params_json: Optional[bool] = Field(None, description="是否通过 JSON 传参")
 
-    class Config:
-        extra = "allow"
-        populate_by_name = True
+    model_config = ConfigDict(extra="allow", populate_by_name=True)
 
     def get_tool_path(self) -> str:
         return (self.toolPath or getattr(self, "tool_path", None) or "").strip()

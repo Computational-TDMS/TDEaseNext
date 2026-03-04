@@ -2,8 +2,6 @@ D:\Projects\TDEase-Backend\InformedProteomics_Program
 
 data
 
-logs
-
 .codex
 
 results
@@ -12,10 +10,12 @@ src/__pychache
 
 *__pycache__*
 
-.cursor
 
 .claude
 
 .codex
 
 app/api/__pycache__
+
+dist
+node_modules

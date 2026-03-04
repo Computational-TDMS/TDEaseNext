@@ -1,9 +1,10 @@
 import sqlite3
+import json
 from pathlib import Path
-from datetime import datetime
 from typing import Optional, List, Dict, Any
 from uuid import uuid4
 from app.database.init_db import get_database_connection
+from app.core.time_utils import utc_now_iso_z
 
 class ExecutionStore:
     def __init__(self, db_path: Optional[str] = None):
@@ -30,23 +31,50 @@ class ExecutionStore:
             sample_id: Sample ID (optional)
             workflow_snapshot: JSON string of workflow structure snapshot (only saved on structure changes)
         """
-        now = datetime.utcnow().isoformat() + "Z"
+        now = utc_now_iso_z()
+        workspace_id = Path(workspace_path).name if workspace_path else "default_workspace"
         with self._conn() as conn:
             try:
-                conn.execute(
-                    """
-                    INSERT OR REPLACE INTO executions
-                    (id, workflow_id, sample_id, status, start_time, end_time, engine_args, config_overrides, environment, workspace_path, workflow_snapshot, created_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """,
-                    (execution_id, workflow_id, sample_id, "pending", now, None, None, None, None, workspace_path, workflow_snapshot, now),
-                )
+                try:
+                    conn.execute(
+                        """
+                        INSERT OR REPLACE INTO executions
+                        (id, user_id, workspace_id, workflow_id, sample_id, status, start_time, end_time, engine_args, config_overrides, environment, workspace_path, workflow_snapshot, created_at)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        """,
+                        (
+                            execution_id,
+                            "default_user",
+                            workspace_id,
+                            workflow_id,
+                            sample_id,
+                            "pending",
+                            now,
+                            None,
+                            None,
+                            None,
+                            None,
+                            workspace_path,
+                            workflow_snapshot,
+                            now,
+                        ),
+                    )
+                except sqlite3.OperationalError:
+                    # Backward compatibility for old schema without user/workspace columns
+                    conn.execute(
+                        """
+                        INSERT OR REPLACE INTO executions
+                        (id, workflow_id, sample_id, status, start_time, end_time, engine_args, config_overrides, environment, workspace_path, workflow_snapshot, created_at)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        """,
+                        (execution_id, workflow_id, sample_id, "pending", now, None, None, None, None, workspace_path, workflow_snapshot, now),
+                    )
                 conn.commit()
             except Exception as e:
                 raise
 
     def start(self, execution_id: str) -> None:
-        now = datetime.utcnow().isoformat() + "Z"
+        now = utc_now_iso_z()
         with self._conn() as conn:
             conn.execute(
                 "UPDATE executions SET status=?, start_time=? WHERE id=?",
@@ -55,7 +83,7 @@ class ExecutionStore:
             conn.commit()
 
     def finish(self, execution_id: str, status: str) -> None:
-        now = datetime.utcnow().isoformat() + "Z"
+        now = utc_now_iso_z()
         with self._conn() as conn:
             conn.execute(
                 "UPDATE executions SET status=?, end_time=? WHERE id=?",
@@ -81,7 +109,7 @@ class ExecutionStore:
             Node record ID
         """
         node_record_id = str(uuid4())
-        now = datetime.utcnow().isoformat() + "Z"
+        now = utc_now_iso_z()
         with self._conn() as conn:
             conn.execute(
                 """
@@ -112,7 +140,7 @@ class ExecutionStore:
             progress: Progress percentage (0-100)
             error_message: Error message if failed
         """
-        now = datetime.utcnow().isoformat() + "Z"
+        now = utc_now_iso_z()
         updates = ["status=?"]
         values = [status]
         
@@ -178,6 +206,28 @@ class ExecutionStore:
             )
             row = cursor.fetchone()
             return dict(row) if row else None
+
+    def update_node_command_trace(
+        self,
+        execution_id: str,
+        node_id: str,
+        command_trace: Dict[str, Any],
+    ) -> None:
+        """
+        Persist node command assembly trace JSON.
+
+        Args:
+            execution_id: Execution ID
+            node_id: Frontend node ID
+            command_trace: Structured command trace payload
+        """
+        payload = json.dumps(command_trace, ensure_ascii=False)
+        with self._conn() as conn:
+            conn.execute(
+                "UPDATE execution_nodes SET command_trace=? WHERE execution_id=? AND node_id=?",
+                (payload, execution_id, node_id),
+            )
+            conn.commit()
 
     def get_latest_completed_execution(self, workflow_id: str) -> Optional[Dict[str, Any]]:
         """

@@ -42,7 +42,11 @@ try:
     workspace = import_module("app.api.workspace")
 except Exception:
     workspace = None
-from app.core.websocket import ConnectionManager
+try:
+    compute_proxy = import_module("app.api.compute_proxy")
+except Exception:
+    compute_proxy = None
+from app.core.websocket import manager
 
 # Configure logging
 logging.basicConfig(
@@ -118,9 +122,6 @@ app.add_middleware(
     allowed_hosts=["localhost", "127.0.0.1", "*.local", "testserver"]
 )
 
-# Global connection manager for WebSocket
-manager = ConnectionManager()
-
 # Include API routers
 app.include_router(workflow.router, prefix="/api/workflows", tags=["workflows"])
 try:
@@ -138,6 +139,8 @@ if tool_schemas is not None:
     app.include_router(tool_schemas.router, prefix="/api/tools", tags=["tools"])
 if workspace is not None:
     app.include_router(workspace.router, prefix="/api", tags=["workspace"])
+if compute_proxy is not None:
+    app.include_router(compute_proxy.router, prefix="/api/compute-proxy", tags=["compute-proxy"])
 
 # WebSocket route
 @app.websocket("/ws/{workflow_id}")

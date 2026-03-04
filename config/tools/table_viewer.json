@@ -18,13 +18,15 @@
       }
     ],
     "outputs": [
-      {
-        "id": "selection",
-        "name": "Selection",
-        "dataType": "selection",
-        "required": false,
-        "description": "Selected rows for downstream processing"
-      }
+        {
+          "id": "selection",
+          "name": "Selection",
+          "dataType": "selection",
+          "required": false,
+          "description": "Selected rows for downstream processing",
+          "portKind": "state-out",
+          "semanticType": "state/selection_ids"
+        }
     ]
   },
   "parameters": {

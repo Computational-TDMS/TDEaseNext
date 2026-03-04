@@ -1,4 +1,5 @@
 import logging
+import json
 from fastapi import APIRouter, HTTPException, status, Query, Depends
 from app.services.runner import execution_manager
 from app.services.execution_store import ExecutionStore
@@ -14,6 +15,19 @@ from typing import Optional
 logger = logging.getLogger(__name__)
 router = APIRouter()
 execution_store = ExecutionStore()
+
+
+def _parse_command_trace(value):
+    if not value:
+        return None
+    if isinstance(value, dict):
+        return value
+    if isinstance(value, str):
+        try:
+            return json.loads(value)
+        except Exception:
+            return None
+    return None
 
 @router.get("/{execution_id}", response_model=WorkflowExecutionResponse)
 async def get_execution_status(execution_id: str) -> WorkflowExecutionResponse:
@@ -31,7 +45,8 @@ async def get_execution_status(execution_id: str) -> WorkflowExecutionResponse:
             progress=node.get("progress", 0),
             start_time=node.get("start_time"),
             end_time=node.get("end_time"),
-            error_message=node.get("error_message")
+            error_message=node.get("error_message"),
+            command_trace=_parse_command_trace(node.get("command_trace")),
         )
         for node in node_records
     ]
@@ -115,7 +130,8 @@ async def get_execution_nodes(execution_id: str):
             progress=node.get("progress", 0),
             start_time=node.get("start_time"),
             end_time=node.get("end_time"),
-            error_message=node.get("error_message")
+            error_message=node.get("error_message"),
+            command_trace=_parse_command_trace(node.get("command_trace")),
         )
         for node in node_records
     ]
@@ -140,8 +156,26 @@ async def get_execution_node(execution_id: str, node_id: str):
         progress=node_record.get("progress", 0),
         start_time=node_record.get("start_time"),
         end_time=node_record.get("end_time"),
-        error_message=node_record.get("error_message")
+        error_message=node_record.get("error_message"),
+        command_trace=_parse_command_trace(node_record.get("command_trace")),
     )
+
+
+@router.get("/{execution_id}/nodes/{node_id}/trace")
+async def get_execution_node_trace(execution_id: str, node_id: str):
+    """Get command assembly trace for one node."""
+    ex = execution_manager.get(execution_id)
+    if not ex:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Execution not found")
+
+    node_record = execution_store.get_node(execution_id, node_id)
+    if not node_record:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Node not found")
+
+    trace = _parse_command_trace(node_record.get("command_trace"))
+    if not trace:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Command trace not found")
+    return {"execution_id": execution_id, "node_id": node_id, "command_trace": trace}
 
 @router.post("/{execution_id}/stop", response_model=SuccessResponse)
 async def stop_execution(execution_id: str) -> SuccessResponse:

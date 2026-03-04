@@ -16,8 +16,7 @@
         "dataType": "txt",
         "required": true,
         "accept": ["txt"],
-        "positional": true,
-        "positionalOrder": 0
+        "flag": "-i"
       }
     ],
     "outputs": [
@@ -33,6 +32,7 @@
   "parameters": {},
   "output": {
     "flagSupported": true,
-    "flag": "-o"
+    "flag": "-o",
+    "flagValue": "{output_path}"
   }
 }

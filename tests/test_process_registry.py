@@ -5,6 +5,7 @@ Tests process registration, cancellation, and concurrent access.
 """
 import pytest
 import subprocess
+import sys
 import time
 import threading
 from app.core.executor.process_registry import process_registry, ProcessRegistry
@@ -23,8 +24,8 @@ class TestProcessRegistry:
 
     def test_register_and_unregister(self):
         """Test basic register and unregister operations"""
-        # Create a simple sleep process
-        proc = subprocess.Popen(["sleep", "10"])
+        # Create a simple sleep process (cross-platform)
+        proc = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(10)"])
         task_id = "test-exec:node-1"
 
         # Register process
@@ -49,7 +50,7 @@ class TestProcessRegistry:
 
     def test_double_unregister(self):
         """Test double unregistering should not raise exception"""
-        proc = subprocess.Popen(["sleep", "10"])
+        proc = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(10)"])
         task_id = "test-exec:node-2"
 
         process_registry.register(task_id, proc)
@@ -64,7 +65,7 @@ class TestProcessRegistry:
     def test_cancel_with_sigterm(self):
         """Test cancelling a process with SIGTERM"""
         # Create a long-running process
-        proc = subprocess.Popen(["sleep", "100"])
+        proc = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(100)"])
         task_id = "test-exec:node-3"
 
         process_registry.register(task_id, proc)
@@ -85,7 +86,7 @@ class TestProcessRegistry:
     def test_cancel_already_exited_process(self):
         """Test cancelling an already exited process returns True"""
         # Create a short-lived process
-        proc = subprocess.Popen(["echo", "done"])
+        proc = subprocess.Popen([sys.executable, "-c", "print('done')"])
         proc.wait()  # Wait for it to complete
         task_id = "test-exec:node-4"
 
@@ -98,13 +99,13 @@ class TestProcessRegistry:
     def test_list_active_excludes_dead_processes(self):
         """Test list_active only returns running processes"""
         # Create a short-lived process
-        proc1 = subprocess.Popen(["echo", "done"])
+        proc1 = subprocess.Popen([sys.executable, "-c", "print('done')"])
         task_id_1 = "test-exec:node-5"
         process_registry.register(task_id_1, proc1)
         proc1.wait()
 
         # Create a long-running process
-        proc2 = subprocess.Popen(["sleep", "10"])
+        proc2 = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(10)"])
         task_id_2 = "test-exec:node-6"
         process_registry.register(task_id_2, proc2)
 
@@ -124,7 +125,7 @@ class TestProcessRegistry:
 
         def register_worker(task_id: str):
             try:
-                proc = subprocess.Popen(["sleep", "5"])
+                proc = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(5)"])
                 process_registry.register(task_id, proc)
                 results["registered"] += 1
                 # Immediately unregister

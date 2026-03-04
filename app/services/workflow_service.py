@@ -5,17 +5,17 @@ WorkflowService - 工作流编排服务
 支持 dryrun、resume（断点续传）模式。
 """
 import logging
-import re
 import uuid
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
-from app.core.engine import FlowEngine, WorkflowGraph, NodeState
+from app.core.engine import FlowEngine
 from app.core.engine.context import ExecutionContext
 from app.core.executor import LocalExecutor, MockExecutor, TaskSpec
+from app.services.input_binding_planner import plan_input_bindings
 from app.services.tool_registry import get_tool_registry
 # 从 node_data_service 导入路径推导函数（保持向后兼容）
-from app.services.node_data_service import _get_output_patterns, _resolve_output_paths
+from app.services.node_data_service import _resolve_output_paths
 
 
 logger = logging.getLogger(__name__)
@@ -42,131 +42,59 @@ def _resolve_input_paths(
     completed_outputs: Dict[str, List[Path]],
     target_tool_id: str = "",
 ) -> Dict[str, Path]:
-    """根据边和上游节点输出解析输入路径，返回 port_id -> Path 的字典。
-
-    支持穿越交互式节点：当上游节点是交互式节点(executionMode=interactive)时，
-    会递归向上查找，直到找到非交互式处理节点的输出。
-    """
-    param_to_path: Dict[str, Path] = {}
-    
-    logger.info(f"[resolve_input_paths] Called for node {node_id}, tool={target_tool_id}")
-    logger.info(f"[resolve_input_paths] edges count: {len(edges)}, completed_outputs keys: {list(completed_outputs.keys())}")
-
-    def find_real_source(interactive_src_id: str, visited: set) -> Optional[str]:
-        """递归查找真实的非交互式源节点。
-
-        Args:
-            interactive_src_id: 当前检查的节点ID
-            visited: 已访问的节点集合，防止循环
-
-        Returns:
-            真实源节点的ID，如果没找到则返回None
-        """
-        if interactive_src_id in visited:
-            logger.warning(f"循环检测：节点 {interactive_src_id} 在输入解析中已被访问")
-            return None
-        visited.add(interactive_src_id)
-
-        # 检查该节点是否已完成执行（有输出）
-        if interactive_src_id in completed_outputs:
-            return interactive_src_id
-
-        # 检查是否是交互式节点
-        src_node = nodes_map.get(interactive_src_id, {})
-        src_data = src_node.get("data", {})
-        src_tool = src_data.get("type", "")
-        src_info = tools_registry.get(src_tool, {})
-
-        # 如果是交互式节点，继续向上游查找
-        if src_info.get("executionMode") == "interactive":
-            # 找到该交互式节点的所有上游输入边
-            for e in edges:
-                if e.get("target") != interactive_src_id:
-                    continue
-                upstream_src_id = e.get("source")
-                if upstream_src_id:
-                    result = find_real_source(upstream_src_id, visited)
-                    if result:
-                        return result
-            return None
-        else:
-            # 非交互式节点但还没完成执行，返回None
-            return None
-
-    # 获取源节点的输出端口定义（用于数据类型匹配）
-    def get_output_data_types(src_info: Dict[str, Any]) -> Dict[str, str]:
-        """获取源工具的所有输出端口的 {handle: dataType} 映射"""
-        result = {}
-        outputs = src_info.get("ports", {}).get("outputs", [])
-        for o in outputs:
-            if isinstance(o, dict):
-                handle = o.get("handle") or o.get("id", "")
-                data_type = o.get("dataType", "")
-                if handle and data_type:
-                    result[handle] = data_type
-        return result
-
-    for e in edges:
-        if e.get("target") != node_id:
-            continue
-        src_id = e.get("source")
-        src_handle_raw = e.get("sourceHandle") or ""
-        src_handle = src_handle_raw.replace("output-", "") if src_handle_raw else ""
-        tgt_handle_raw = e.get("targetHandle") or ""
-        tgt_handle = tgt_handle_raw.replace("input-", "") if tgt_handle_raw else ""
-
-        logger.info(f"[resolve_input_paths] Edge: source={src_id}, target={node_id}, srcHandle={src_handle_raw} -> {src_handle}, tgtHandle={tgt_handle_raw} -> {tgt_handle}")
-
-        if not src_id:
-            continue
-
-        # 查找真实的源节点（穿越交互式节点）
-        real_src_id = find_real_source(src_id, set())
-        if not real_src_id or real_src_id not in completed_outputs:
-            continue
-
-        src_outputs = completed_outputs[real_src_id]
-        src_node = nodes_map.get(real_src_id, {})
-        src_data = src_node.get("data", {})
-        src_tool = src_data.get("type", "")
-        src_info = tools_registry.get(src_tool, {})
-        patterns = _get_output_patterns(src_info)
-        
-        if not patterns:
-            if tgt_handle and src_outputs:
-                param_to_path[tgt_handle] = src_outputs[0]
-            continue
-        
-        # 获取源节点的输出数据类型映射
-        output_data_types = get_output_data_types(src_info)
-        
-        matched_idx = None
-        for idx, p in enumerate(patterns):
-            h = p.get("handle", "") if isinstance(p, dict) else ""
-            
-            # 匹配策略 1: handle 精确匹配
-            if h and h == src_handle:
-                matched_idx = idx
-                break
-            
-            # 匹配策略 2: src_handle 是数据类型，与该端口的 dataType 匹配
-            if src_handle:
-                port_data_type = output_data_types.get(h, "")
-                if port_data_type and port_data_type == src_handle:
-                    matched_idx = idx
-                    logger.info(f"[resolve_input_paths] Matched by dataType: {src_handle} -> handle={h}")
-                    break
-            
-            # 匹配策略 3: 无 src_handle 时，使用第一个输出
-            if not src_handle and idx == 0:
-                matched_idx = idx
-                break
-        
-        if matched_idx is not None and matched_idx < len(src_outputs) and tgt_handle:
-            param_to_path[tgt_handle] = src_outputs[matched_idx]
-    
-    logger.info(f"[resolve_input_paths] Final param_to_path for {node_id}: {param_to_path}")
+    """兼容包装：委托 InputBindingPlanner 解析输入绑定。"""
+    _ = sample_ctx, workspace  # 保留签名兼容；规划器当前仅依赖结构化连接与已完成输出
+    logger.info("[resolve_input_paths] Called for node=%s tool=%s", node_id, target_tool_id)
+    param_to_path, decisions = plan_input_bindings(
+        node_id=node_id,
+        edges=edges,
+        nodes_map=nodes_map,
+        tools_registry=tools_registry,
+        completed_outputs=completed_outputs,
+        target_tool_id=target_tool_id,
+    )
+    for decision in decisions:
+        logger.info(
+            "[resolve_input_paths] edge=%s status=%s src=%s real_src=%s target_port=%s idx=%s score=%s reason=%s path=%s",
+            decision.edge_id,
+            decision.status,
+            decision.source_node_id,
+            decision.resolved_source_node_id,
+            decision.target_port_id,
+            decision.selected_output_index,
+            decision.score,
+            decision.reason,
+            decision.selected_output_path,
+        )
+    logger.info("[resolve_input_paths] Final param_to_path for %s: %s", node_id, param_to_path)
     return param_to_path
+
+
+def _enrich_sample_context_for_input_nodes(nodes: List[Dict[str, Any]], sample_ctx: Dict[str, str]) -> None:
+    """从 data_loader 等节点推导占位符，补全 sample_context."""
+    if not isinstance(sample_ctx, dict):
+        return
+
+    def _set_if_missing(key: str, value: Optional[str]) -> None:
+        if value and key not in sample_ctx:
+            sample_ctx[key] = value
+
+    for node in nodes:
+        data = node.get("data", {}) or {}
+        if data.get("type") != "data_loader":
+            continue
+        params = data.get("params", {}) or {}
+        input_sources = params.get("input_sources") or params.get("input_source") or []
+        if isinstance(input_sources, str):
+            input_sources = [input_sources]
+        if not input_sources:
+            continue
+        first = Path(input_sources[0])
+        _set_if_missing("raw_path", str(first))
+        _set_if_missing("input_dir", str(first.parent))
+        _set_if_missing("input_basename", first.stem)
+        _set_if_missing("input_ext", first.suffix.lstrip("."))  # expect without dot
+        _set_if_missing("input_file", first.name)
 
 
 class WorkflowService:
@@ -214,6 +142,7 @@ class WorkflowService:
 
         params = parameters or {}
         sample_ctx = params.get("sample_context", {}) or {"sample": params.get("sample", "default")}
+        _enrich_sample_context_for_input_nodes(wf.get("nodes", []), sample_ctx)
 
         ex_id = execution_id or str(uuid.uuid4())
         executor = MockExecutor(self.tools) if simulate else self.executor

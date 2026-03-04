@@ -66,9 +66,19 @@ def _run_direct(cmd: str, workdir: Path, log_callback: Optional[Callable[[str, s
     if log_callback:
         _run_with_capture(cmd, workdir, None, log_callback, task_id)
     else:
-        result = subprocess.run(cmd, shell=True, cwd=workdir)
-        if result.returncode != 0:
-            raise subprocess.CalledProcessError(result.returncode, cmd)
+        proc = None
+        try:
+            proc = subprocess.Popen(cmd, shell=True, cwd=workdir)
+            if task_id and proc:
+                process_registry.register(task_id, proc)
+                logger.debug(f"[ShellRunner] Registered process for task_id={task_id}, pid={proc.pid}")
+            proc.wait()
+            if proc.returncode != 0:
+                raise subprocess.CalledProcessError(proc.returncode, cmd)
+        finally:
+            if task_id and proc:
+                process_registry.unregister(task_id)
+                logger.debug(f"[ShellRunner] Unregistered process for task_id={task_id}")
 
 
 def _run_with_capture(

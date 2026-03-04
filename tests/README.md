@@ -16,6 +16,34 @@ uv run pytest tests/test_workflow_execution.py -v
 
 **无需启动 API 服务器**：测试通过 `TestClient` 在进程内调用后端，真实执行 Shell 命令。
 
+## 命令行拼装 E2E（Command Composition）
+
+用于验证工作流执行系统最终拼装出的命令行参数（不是只测中间函数）。
+
+### 覆盖场景
+
+- `pbfgen` 风格：输入端口通过 `flag`（如 `-i`）传参，且 edge `sourceHandle` 与上游输出 handle 不一致时仍能正确解析并拼装。
+- `toppic` 风格：多输入位置参数的顺序稳定（`positionalOrder` 生效）。
+- 运行日志链路：工具 stdout 能通过 `log_callback` 被捕获（前端日志展示链路的后端入口）。
+- 命令拼装追踪：执行前会输出 `[command_trace] {...}` 结构化日志，包含 `cmd_parts/input_flags/positional_args`。
+- API 可直接读取节点 trace：`GET /api/executions/{execution_id}/nodes/{node_id}/trace`。
+
+### 运行方式
+
+```bash
+uv run python -m pytest tests/test_cmdline_composition_e2e.py -q
+uv run python -m pytest tests/test_input_binding_planner.py -q
+uv run python -m pytest tests/test_command_pipeline_trace.py -q
+uv run python -m pytest tests/test_execution_store_command_trace.py tests/test_execution_api_command_trace.py -q
+```
+
+相关文件：
+
+- `tests/test_cmdline_composition_e2e.py`
+- `tests/fixtures/tools/mock_source_tool.py`
+- `tests/fixtures/tools/mock_pbfgen_tool.py`
+- `tests/fixtures/tools/mock_echo_argv_tool.py`
+
 ### 依赖与结构
 
 | 文件 | 说明 |
@@ -135,4 +163,3 @@ python tests/test_workflow_execution.py
 # 终端3: 查看执行状态 (可选)
 curl http://localhost:8000/api/executions/{execution_id}
 ```
-

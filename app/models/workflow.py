@@ -2,7 +2,7 @@
 Workflow-related data models
 """
 
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, field_validator
 from typing import Dict, Any, List, Optional
 from datetime import datetime
 import uuid
@@ -29,15 +29,17 @@ class WorkflowCreate(BaseModel):
     samples: Optional[List[str]] = Field(None, description="Sample list for workflow execution")
     metadata: Optional[Dict[str, Any]] = Field(None, description="Additional workflow metadata")
 
-    @validator('workspace_path')
-    def validate_workspace_path(cls, v):
+    @field_validator("workspace_path")
+    @classmethod
+    def validate_workspace_path(cls, v: str) -> str:
         """Validate that workspace path is provided and not empty"""
         if not v or v.strip() == "":
             raise ValueError("Workspace path is required")
         return v.strip()
 
-    @validator('name')
-    def validate_name(cls, v):
+    @field_validator("name")
+    @classmethod
+    def validate_name(cls, v: str) -> str:
         """Validate workflow name"""
         if not v or v.strip() == "":
             raise ValueError("Workflow name is required")
@@ -63,24 +65,11 @@ class WorkflowResponse(BaseModel):
     vueflow_file: Optional[str] = Field(None, description="Path to stored VueFlow JSON file")
     metadata: Optional[Dict[str, Any]] = Field(None, description="Workflow metadata")
 
-    class Config:
-        json_encoders = {
-            datetime: lambda v: v.isoformat()
-        }
-
 class WorkflowListResponse(BaseModel):
     workflows: List[Dict[str, Any]]
     total: int
     page: int
     page_size: int
-
-    class Config:
-        json_encoders = {
-            datetime: lambda v: v.isoformat()
-        }
-
-
-
 
 class WorkflowCompilationRequest(BaseModel):
     """Model for workflow compilation request"""
@@ -102,8 +91,9 @@ class WorkflowUpdate(BaseModel):
     vueflow_data: Optional[Dict[str, Any]] = Field(None, description="VueFlow JSON data structure")
     workspace_path: Optional[str] = Field(None, description="Workspace directory path")
 
-    @validator('name')
-    def validate_name(cls, v):
+    @field_validator("name")
+    @classmethod
+    def validate_name(cls, v: Optional[str]) -> Optional[str]:
         if v is not None and v.strip() == "":
             raise ValueError("Name cannot be empty if provided")
         return v.strip() if v else v
@@ -114,10 +104,6 @@ class WorkflowStatus(BaseModel):
     status: str = Field(...)
     engine_status: Dict[str, Any] = Field(default_factory=dict, description="Engine execution status")
     last_updated: datetime = Field(...)
-
-    class Config:
-        json_encoders = {datetime: lambda v: v.isoformat()}
-
 
 class WorkflowImportRequest(BaseModel):
     name: str = Field(..., min_length=1, max_length=100)
@@ -138,7 +124,3 @@ class WorkflowListItem(BaseModel):
     updated_at: datetime = Field(..., description="Last update timestamp")
     workspace_path: str = Field(..., description="Workspace directory")
 
-    class Config:
-        json_encoders = {
-            datetime: lambda v: v.isoformat()
-        }

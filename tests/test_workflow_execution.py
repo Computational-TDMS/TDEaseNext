@@ -86,13 +86,25 @@ def test_workflow_abc_execution_real():
                 "resume": False,
             },
         },
-        timeout=60,
     )
 
     assert resp.status_code == 200, f"Expected 200, got {resp.status_code}: {resp.text}"
     data = resp.json()
     assert "executionId" in data
-    assert data["status"] in ("completed", "dryrun"), f"Expected completed, got {data['status']}"
+    execution_id = data["executionId"]
+    status = data.get("status")
+    if status == "running":
+        # Poll until completed
+        import time
+        deadline = time.time() + 30
+        while time.time() < deadline:
+            resp2 = client.get(f"/api/executions/{execution_id}")
+            assert resp2.status_code == 200, f"Expected 200, got {resp2.status_code}: {resp2.text}"
+            status = resp2.json().get("status")
+            if status in ("completed", "failed"):
+                break
+            time.sleep(0.5)
+    assert status in ("completed", "dryrun"), f"Expected completed, got {status}"
 
     workspace = Path(get_workflows_root()) / "wf_abc_test"
     assert workspace.exists(), f"Workspace not found: {workspace}"

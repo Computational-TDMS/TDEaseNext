@@ -238,6 +238,59 @@ TDEase 后端提供了完整的 RESTful API 体系来管理工作流和执行。
 - **端点**: `GET /api/tools/{tool_id}`
 - **响应**: 单个工具的完整定义
 
+### 预览工具命令 (新增)
+
+- **端点**: `POST /api/tools/preview`
+- **请求体**:
+```json
+{
+  "tool_id": "topfd",
+  "param_values": {
+    "mass": "50000",
+    "mz": "0.02"
+  },
+  "input_files": {},
+  "output_target": null
+}
+```
+
+**注意**: `input_files` 为空对象、`output_target` 为 null 时，返回的命令将使用占位符（如 `<ms2_file>`、`<output_dir>`），而不是实际文件路径。
+
+- **响应**:
+```json
+{
+  "tool_id": "topfd",
+  "command": "topfd -m 50000 -o <output_dir> <ms2_file>",
+  "command_parts": ["topfd", "-m", "50000", "-o", "<output_dir>", "<ms2_file>"],
+  "trace": {
+    "tool_id": "topfd",
+    "execution_mode": "native",
+    "executable": "topfd",
+    "filtered_params": {
+      "mass": "50000",
+      "mz": "0.02"
+    },
+    "input_files": {},
+    "output_target": null,
+    "output_flag": {
+      "flag": "-o",
+      "value": "<output_dir>"
+    },
+    "parameter_flags": ["-m", "50000"],
+    "input_flags": [],
+    "positional_args": ["<ms2_file>"],
+    "cmd_parts": ["topfd", "-m", "50000", "-o", "<output_dir>", "<ms2_file>"]
+  }
+}
+```
+
+**说明**：
+- 使用与实际执行相同的 `CommandPipeline` 逻辑
+- 自动过滤空参数（null/空字符串/"none"）
+- 支持所有执行模式（native/script/docker/interactive）
+- 返回详细 trace 信息用于调试
+- 前端参数面板应使用此 API，传入空的 `input_files` 和 `null` 的 `output_target` 获取占位符预览
+
 ---
 
 ## 4. 可视化 API (新增)

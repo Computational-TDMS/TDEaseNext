@@ -10,8 +10,13 @@
 | 文档 | 说明 |
 |------|------|
 | [系统架构](ARCHITECTURE.md) | 新架构总览 - Command Pipeline, UnifiedWorkspaceManager, Tool Definition Schema |
+| [功能目标与实现](FUNCTIONAL_OVERVIEW.md) | 核心功能目标和实现方式 - 工作流编排、工具注册、样品管理、执行引擎 |
+| [工作流执行机制](WORKFLOW_EXECUTION.md) | 工作流执行流程、工具后端映射、文件追踪详解 |
+| [节点连接与数据传递](About_node_connection.md) | 节点连接类型、数据流、输入输出路径解析 |
 | [API 文档](api/endpoints.md) | RESTful API 端点 - 工作流执行、工具管理、可视化 API |
 | [API 使用示例](API_USAGE_NEW_ARCHITECTURE.md) | 新架构 API 调用示例（Python/cURL） |
+| **交互式工作流需求** | **用户工作流交互目标，为架构设计提供需求输入** |
+| [工作流需求文档](WORKFLOW_REQUIREMENTS.md) | 交互式工作流的核心需求、参考工具设计、待实现功能 |
 
 ### 使用指南
 

@@ -5,6 +5,7 @@ Loads tests/test.json and saves to database.
 Uses new architecture: workspace_path = data/users/{user_id}/workspaces/{workspace_id}/
 """
 
+import argparse
 import sqlite3
 import json
 import sys
@@ -19,7 +20,7 @@ from app.services.unified_workspace_manager import get_unified_workspace_manager
 
 # Paths
 db_path = "data/tdease.db"
-test_workflow_path = Path(__file__).parent.parent / "tests" / "test.json"
+default_workflow_path = Path(__file__).parent.parent / "tests" / "test.json"
 
 # Default workspace for seeded workflow (matches test_user/test_workspace in samples.json)
 DEFAULT_USER_ID = "test_user"
@@ -29,15 +30,38 @@ DEFAULT_WORKSPACE_ID = "test_workspace"
 SAMPLES_FIXTURE_PATH = Path(__file__).parent.parent / "tests" / "fixtures" / "samples_test_workspace.json"
 
 
-def load_test_workflow():
-    """Load test workflow from JSON file"""
-    if not test_workflow_path.exists():
-        raise FileNotFoundError(f"Test workflow file not found: {test_workflow_path}")
-    
-    with open(test_workflow_path, 'r', encoding='utf-8') as f:
+def load_workflow(workflow_path: Path):
+    """Load workflow from JSON file"""
+    if not workflow_path.exists():
+        raise FileNotFoundError(f"Workflow file not found: {workflow_path}")
+
+    with open(workflow_path, 'r', encoding='utf-8') as f:
         return json.load(f)
 
-def seed():
+def _parse_args():
+    parser = argparse.ArgumentParser(description="Seed workflow JSON into workflows table")
+    parser.add_argument(
+        "--workflow",
+        type=str,
+        default=str(default_workflow_path),
+        help="Path to workflow JSON file",
+    )
+    parser.add_argument(
+        "--user-id",
+        type=str,
+        default=DEFAULT_USER_ID,
+        help="User ID for workspace path",
+    )
+    parser.add_argument(
+        "--workspace-id",
+        type=str,
+        default=DEFAULT_WORKSPACE_ID,
+        help="Workspace ID for workspace path",
+    )
+    return parser.parse_args()
+
+
+def seed(workflow_path: Path, user_id: str, workspace_id: str):
     """Seed default workflow into database"""
     # Ensure database is initialized
     print("Initializing database if needed...")
@@ -45,7 +69,7 @@ def seed():
     
     # Use workspace path (new architecture); ensure dirs exist
     manager = get_unified_workspace_manager()
-    workspace_path = manager.get_workspace_path(DEFAULT_USER_ID, DEFAULT_WORKSPACE_ID)
+    workspace_path = manager.get_workspace_path(user_id, workspace_id)
     (workspace_path / "workflows").mkdir(parents=True, exist_ok=True)
     (workspace_path / "data" / "raw").mkdir(parents=True, exist_ok=True)
     (workspace_path / "data" / "fasta").mkdir(parents=True, exist_ok=True)
@@ -73,8 +97,8 @@ def seed():
     workspace_path = str(workspace_path.resolve()) if hasattr(workspace_path, 'resolve') else str(workspace_path)
     
     # Load test workflow
-    print(f"Loading test workflow from: {test_workflow_path}")
-    wf_data = load_test_workflow()
+    print(f"Loading workflow from: {workflow_path}")
+    wf_data = load_workflow(workflow_path)
     
     Path(db_path).parent.mkdir(parents=True, exist_ok=True)
     
@@ -83,14 +107,17 @@ def seed():
     cursor = conn.cursor()
     
     now = datetime.now(timezone.utc).isoformat()
-    wf_id = wf_data["metadata"]["id"]
-    name = wf_data["metadata"]["name"]
-    description = wf_data["metadata"].get("description", "")
+    metadata_obj = wf_data.get("metadata", {})
+    wf_id = metadata_obj.get("id") or wf_data.get("workflow_id")
+    if not wf_id:
+        raise ValueError("Workflow must contain metadata.id or workflow_id")
+    name = metadata_obj.get("name") or wf_data.get("name") or wf_id
+    description = metadata_obj.get("description") or wf_data.get("description", "")
     
     # Prepare vueflow_data and workflow_document
     vueflow_data = json.dumps(wf_data, ensure_ascii=False)
     workflow_document = vueflow_data
-    metadata = json.dumps(wf_data["metadata"], ensure_ascii=False)
+    metadata = json.dumps(metadata_obj, ensure_ascii=False)
     
     # Save workflow JSON to workspace/workflows/ (optional, for consistency)
     workflows_dir = Path(workspace_path) / "workflows"
@@ -124,13 +151,13 @@ def seed():
             """, (wf_id, name, description, vueflow_data, workspace_path, now, now, metadata, workflow_document))
         
         conn.commit()
-        print(f"✓ Successfully saved workflow '{name}' (ID: {wf_id}) to database")
+        print(f"[OK] Successfully saved workflow '{name}' (ID: {wf_id}) to database")
         print(f"  Workspace: {workspace_path}")
         print(f"  Nodes: {len(wf_data.get('nodes', []))}, Edges: {len(wf_data.get('edges', []))}")
         
     except Exception as e:
         conn.rollback()
-        print(f"✗ Error seeding database: {e}")
+        print(f"[ERROR] Error seeding database: {e}")
         import traceback
         traceback.print_exc()
         return False
@@ -140,5 +167,6 @@ def seed():
     return True
 
 if __name__ == "__main__":
-    success = seed()
+    args = _parse_args()
+    success = seed(Path(args.workflow), args.user_id, args.workspace_id)
     sys.exit(0 if success else 1)

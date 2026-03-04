@@ -1,0 +1,49 @@
+{
+  "id": "filter_node",
+  "name": "Filter Node",
+  "version": "1.0.0",
+  "description": "Pure logic node that applies filter or selection criteria to tabular data",
+  "executionMode": "interactive",
+  "command": {
+    "executable": "filter_node"
+  },
+  "ports": {
+    "inputs": [
+      {
+        "id": "data_in",
+        "name": "Data Input",
+        "dataType": "table",
+        "required": true,
+        "description": "Tabular dataset to be filtered",
+        "portKind": "data",
+        "semanticType": "data/table"
+      },
+      {
+        "id": "filter_in",
+        "name": "Filter Criteria",
+        "dataType": "state",
+        "required": false,
+        "description": "External filter or selection state",
+        "portKind": "state-in",
+        "semanticType": "state/range"
+      }
+    ],
+    "outputs": [
+      {
+        "id": "data_out",
+        "name": "Filtered Data",
+        "dataType": "table",
+        "required": false,
+        "description": "Filtered table emitted to downstream nodes",
+        "portKind": "data",
+        "semanticType": "data/table"
+      }
+    ]
+  },
+  "visualization": {
+    "type": "custom",
+    "config": {
+      "description": "No dedicated UI; used as a lightweight filter node in the workflow canvas."
+    }
+  }
+}
