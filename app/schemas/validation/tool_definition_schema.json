@@ -1,0 +1,303 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "tool-definition-schema.json",
+  "title": "Tool Definition Schema",
+  "description": "JSON schema for validating tool definitions with interactive visualization support",
+  "type": "object",
+  "required": [
+    "id",
+    "name",
+    "executionMode",
+    "ports"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "description": "Unique tool identifier"
+    },
+    "name": {
+      "type": "string",
+      "description": "Tool display name"
+    },
+    "version": {
+      "type": "string",
+      "description": "Tool version"
+    },
+    "description": {
+      "type": "string",
+      "description": "Tool description"
+    },
+    "executionMode": {
+      "type": "string",
+      "enum": [
+        "native",
+        "docker",
+        "compute",
+        "interactive"
+      ],
+      "description": "Tool execution mode: native (local binary), docker (container), compute (batch processing), interactive (visualization)"
+    },
+    "command": {
+      "type": "object",
+      "description": "Command configuration",
+      "properties": {
+        "executable": {
+          "type": "string",
+          "description": "Path to executable"
+        },
+        "args": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Command arguments"
+        }
+      }
+    },
+    "ports": {
+      "type": "object",
+      "description": "Input and output ports",
+      "required": [
+        "inputs",
+        "outputs"
+      ],
+      "properties": {
+        "inputs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/inputPort"
+          }
+        },
+        "outputs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/outputPort"
+          }
+        }
+      }
+    },
+    "parameters": {
+      "type": "object",
+      "description": "Tool parameters",
+      "additionalProperties": {
+        "$ref": "#/definitions/parameter"
+      }
+    },
+    "defaultMapping": {
+      "type": "object",
+      "description": "Default column mapping for interactive visualization tools",
+      "additionalProperties": true
+    },
+    "output": {
+      "type": "object",
+      "description": "Output configuration",
+      "properties": {
+        "flagSupported": {
+          "type": "boolean",
+          "description": "Whether output directory flag is supported"
+        }
+      }
+    }
+  },
+  "definitions": {
+    "inputPort": {
+      "type": "object",
+      "required": [
+        "id"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Port identifier"
+        },
+        "name": {
+          "type": "string",
+          "description": "Display name"
+        },
+        "dataType": {
+          "type": "string",
+          "description": "Data type (e.g., mzml, fasta, feature)"
+        },
+        "required": {
+          "type": "boolean",
+          "default": true
+        },
+        "accept": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Accepted file extensions"
+        },
+        "positional": {
+          "type": "boolean",
+          "description": "Whether this is a positional parameter"
+        },
+        "positionalOrder": {
+          "type": "integer",
+          "description": "Order for positional parameters"
+        },
+        "pattern": {
+          "type": "string",
+          "description": "File pattern with placeholders"
+        }
+      }
+    },
+    "outputPort": {
+      "type": "object",
+      "required": [
+        "id",
+        "pattern"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Port identifier"
+        },
+        "name": {
+          "type": "string",
+          "description": "Display name"
+        },
+        "dataType": {
+          "type": "string",
+          "description": "Data type"
+        },
+        "pattern": {
+          "type": "string",
+          "description": "Output file pattern with placeholders (e.g., {sample}.mzML)"
+        },
+        "handle": {
+          "type": "string",
+          "description": "Handle for connection matching"
+        },
+        "provides": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "List of provided data types"
+        },
+        "description": {
+          "type": "string",
+          "description": "Output description"
+        },
+        "schema": {
+          "type": "array",
+          "description": "Column schema for tabular data",
+          "items": {
+            "type": "object",
+            "required": [
+              "name",
+              "type"
+            ],
+            "properties": {
+              "name": {
+                "type": "string",
+                "description": "Column name"
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "string",
+                  "number",
+                  "boolean",
+                  "datetime"
+                ],
+                "description": "Column data type"
+              },
+              "description": {
+                "type": "string",
+                "description": "Column description"
+              },
+              "optional": {
+                "type": "boolean",
+                "default": false,
+                "description": "Whether column can be null"
+              }
+            }
+          }
+        },
+        "column_schema": {
+          "type": "array",
+          "description": "Column schema for tabular data",
+          "items": {
+            "type": "object",
+            "required": [
+              "name",
+              "type"
+            ],
+            "properties": {
+              "name": {
+                "type": "string",
+                "description": "Column name"
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "string",
+                  "number",
+                  "boolean",
+                  "datetime"
+                ],
+                "description": "Column data type"
+              },
+              "description": {
+                "type": "string",
+                "description": "Column description"
+              },
+              "optional": {
+                "type": "boolean",
+                "default": false,
+                "description": "Whether column can be null"
+              }
+            }
+          }
+        }
+      }
+    },
+    "parameter": {
+      "type": "object",
+      "properties": {
+        "flag": {
+          "type": "string",
+          "description": "Command line flag (e.g., -a, --format)"
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "value",
+            "boolean",
+            "choice"
+          ],
+          "description": "Parameter type"
+        },
+        "label": {
+          "type": "string",
+          "description": "Display label"
+        },
+        "description": {
+          "type": "string",
+          "description": "Parameter description"
+        },
+        "group": {
+          "type": "string",
+          "description": "Parameter group (basic, advanced)"
+        },
+        "default": {
+          "description": "Default value"
+        },
+        "choices": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Available choices for type=choice"
+        },
+        "required": {
+          "type": "boolean",
+          "default": false
+        }
+      }
+    }
+  }
+}

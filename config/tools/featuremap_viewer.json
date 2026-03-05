@@ -1,144 +1,55 @@
 {
   "id": "featuremap_viewer",
-  "name": "FeatureMap Viewer",
+  "name": "Feature Map Viewer",
   "version": "1.0.0",
-  "description": "Interactive FeatureMap visualization for proteoform data exploration",
+  "description": "Interactive visualization tool for LC-MS feature maps",
   "executionMode": "interactive",
-  "command": {
-    "executable": "featuremap_viewer"
+  "defaultMapping": {
+    "x": "mz",
+    "y": "rt",
+    "color": "intensity",
+    "size": "charge",
+    "label": "feature_id"
   },
   "ports": {
     "inputs": [
       {
-        "id": "prsm_file",
-        "name": "PrSM File",
-        "dataType": "prsm",
+        "id": "feature_data",
+        "name": "Feature Data",
+        "dataType": "feature",
         "required": true,
-        "description": "TopPIC PrSM output file"
-      },
-      {
-        "id": "featuremap_file",
-        "name": "FeatureMap File",
-        "dataType": "featuremap",
-        "required": false,
-        "description": "TopPIC FeatureMap output file (optional)"
+        "accept": ["feature", "ms1ft"],
+        "pattern": "{sample}_ms1.feature"
       }
     ],
-      "outputs": [
-        {
-          "id": "selection",
-          "name": "Selection",
-          "dataType": "selection",
-          "required": false,
-          "description": "Selected features for downstream processing",
-          "portKind": "state-out",
-          "semanticType": "state/selection_ids"
-        }
-      ]
+    "outputs": []
   },
   "parameters": {
-    "min_prob": {
-      "flag": "",
-      "type": "value",
-      "label": "Min Probability",
-      "description": "Minimum probability threshold",
-      "group": "basic",
-      "default": "0.01"
+    "plot_type": {
+      "type": "choice",
+      "label": "Plot Type",
+      "description": "Type of visualization plot",
+      "choices": ["scatter", "heatmap", "contour"],
+      "default": "scatter"
+    },
+    "color_scale": {
+      "type": "choice",
+      "label": "Color Scale",
+      "description": "Color scale for visualization",
+      "choices": ["viridis", "plasma", "inferno", "magma", "cividis"],
+      "default": "viridis"
     },
     "show_labels": {
-      "flag": "",
       "type": "boolean",
       "label": "Show Labels",
-      "description": "Show proteoform labels on plot",
-      "group": "basic",
-      "default": true
+      "description": "Show feature labels on plot",
+      "default": false
     },
-    "color_by": {
-      "flag": "",
-      "type": "choice",
-      "label": "Color By",
-      "description": "Property to use for color coding",
-      "group": "advanced",
-      "default": "qvalue",
-      "choices": ["qvalue", "evalue", "mass", "charge"]
-    },
-    "max_points": {
-      "flag": "",
+    "max_features": {
       "type": "value",
-      "label": "Max Points",
-      "description": "Maximum number of points to display",
-      "group": "advanced",
-      "default": "10000"
-    }
-  },
-  "output": {
-    "flagSupported": false
-  },
-  "visualization": {
-    "type": "featuremap",
-    "dataSource": "file",
-    "filePath": "{sample}_ms2.featuremap",
-    "columns": [
-      {
-        "id": "x",
-        "name": "RT (min)",
-        "type": "number",
-        "visible": true,
-        "sortable": false,
-        "filterable": false
-      },
-      {
-        "id": "y",
-        "name": "Mass",
-        "type": "number",
-        "visible": true,
-        "sortable": false,
-        "filterable": false
-      },
-      {
-        "id": "featureInt",
-        "name": "Intensity",
-        "type": "number",
-        "visible": true,
-        "sortable": false,
-        "filterable": false
-      },
-      {
-        "id": "qvalue",
-        "name": "Q-Value",
-        "type": "number",
-        "visible": false,
-        "sortable": false,
-        "filterable": true
-      },
-      {
-        "id": "evalue",
-        "name": "E-Value",
-        "type": "number",
-        "visible": false,
-        "sortable": false,
-        "filterable": true
-      },
-      {
-        "id": "charge",
-        "name": "Charge",
-        "type": "number",
-        "visible": false,
-        "sortable": false,
-        "filterable": true
-      }
-    ],
-    "config": {
-      "plotType": "scatter",
-      "xAxisLabel": "RT (min)",
-      "yAxisLabel": "Mass (Da)",
-      "colorScale": "viridis",
-      "pointSize": 3,
-      "opacity": 0.7,
-      "zoomEnabled": true,
-      "panEnabled": true,
-      "tooltipEnabled": true,
-      "exportFormats": ["png", "svg", "csv"]
+      "label": "Max Features",
+      "description": "Maximum number of features to display",
+      "default": "1000"
     }
   }
 }

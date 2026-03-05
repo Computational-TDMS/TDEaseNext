@@ -113,6 +113,63 @@ class WorkflowService:
         self.execution_store = execution_store
         self.execution_manager = execution_manager  # 用于注册节点状态以支持取消操作
 
+    def __build_task_spec(
+        self,
+        nid: str,
+        node_data: Dict[str, Any],
+        c: ExecutionContext,
+        *,
+        edges: Optional[List[Dict[str, Any]]] = None,
+        nodes_map: Optional[Dict[str, Dict[str, Any]]] = None,
+        completed_outputs: Optional[Dict[str, List[Path]]] = None,
+    ) -> Optional[TaskSpec]:
+        """Build TaskSpec for a node; return None for interactive nodes."""
+        tool_id = node_data.get("type", "")
+        ti = self.tools.get(tool_id, {})
+
+        if ti.get("executionMode") == "interactive":
+            logger.info(f"Skipping interactive node: {nid} (tool: {tool_id})")
+            return None
+
+        task_id = f"{c.execution_id}:{nid}"
+        logger.debug(f"[WorkflowService] Generated task_id={task_id} for node {nid}")
+
+        params_node = node_data.get("params", {})
+        out_paths = _resolve_output_paths(nid, tool_id, ti, c.sample_context, c.workspace_path)
+        input_files_dict = _resolve_input_paths(
+            nid,
+            edges or [],
+            nodes_map or {},
+            self.tools,
+            c.sample_context,
+            c.workspace_path,
+            completed_outputs or {},
+            target_tool_id=tool_id,
+        )
+        logger.info(f"[WorkflowService] Resolved input_files_dict for node {nid}: {input_files_dict}")
+
+        positional_ids = _get_positional_input_ids(ti)
+        if positional_ids:
+            in_paths = [input_files_dict[pid] for pid in positional_ids if pid in input_files_dict]
+        else:
+            in_paths = list(input_files_dict.values())
+
+        if tool_id == "data_loader":
+            params_node = {**params_node, "sample_name": c.sample_context.get("sample", "")}
+
+        return TaskSpec(
+            node_id=nid,
+            tool_id=tool_id,
+            params=params_node,
+            input_paths=in_paths,
+            input_files=input_files_dict,
+            output_paths=out_paths,
+            workspace_path=c.workspace_path,
+            conda_env=ti.get("conda_env"),
+            log_callback=c.log_callback,
+            task_id=task_id,
+        )
+
     async def execute_workflow(
         self,
         workflow_json: Dict[str, Any],
@@ -170,48 +227,13 @@ class WorkflowService:
             return all(p.exists() for p in paths)
 
         def build_task_spec(nid: str, node_data: Dict, c: ExecutionContext) -> Optional[TaskSpec]:
-            tool_id = node_data.get("type", "")
-            ti = self.tools.get(tool_id, {})
-
-            # 跳过交互式节点 (interactive execution mode)
-            if ti.get("executionMode") == "interactive":
-                logger.info(f"Skipping interactive node: {nid} (tool: {tool_id})")
-                return None
-
-            # 生成 task_id: {execution_id}:{node_id}
-            task_id = f"{c.execution_id}:{nid}"
-            logger.debug(f"[WorkflowService] Generated task_id={task_id} for node {nid}")
-
-            params_node = node_data.get("params", {})
-            out_paths = _resolve_output_paths(nid, tool_id, ti, c.sample_context, c.workspace_path)
-            input_files_dict = _resolve_input_paths(
-                nid, edges, nodes_map, self.tools, c.sample_context, c.workspace_path, completed_outputs,
-                target_tool_id=tool_id,
-            )
-            logger.info(f"[WorkflowService] Resolved input_files_dict for node {nid}: {input_files_dict}")
-
-            # 保持向后兼容：input_paths 按 positional 顺序排列
-            positional_ids = _get_positional_input_ids(ti)
-            if positional_ids:
-                in_paths = [input_files_dict[pid] for pid in positional_ids if pid in input_files_dict]
-            else:
-                in_paths = list(input_files_dict.values())
-
-            # 对于 data_loader，统一使用前端/context 传入的 sample 作为输出文件名，不兜底 basename
-            if tool_id == "data_loader":
-                params_node = {**params_node, "sample_name": c.sample_context.get("sample", "")}
-
-            return TaskSpec(
-                node_id=nid,
-                tool_id=tool_id,
-                params=params_node,
-                input_paths=in_paths,
-                input_files=input_files_dict,  # 新增：port_id -> Path 映射
-                output_paths=out_paths,
-                workspace_path=c.workspace_path,
-                conda_env=ti.get("conda_env"),
-                log_callback=c.log_callback,
-                task_id=task_id,  # 新增：用于进程追踪和取消
+            return self.__build_task_spec(
+                nid,
+                node_data,
+                c,
+                edges=edges,
+                nodes_map=nodes_map,
+                completed_outputs=completed_outputs,
             )
 
         async def execute_fn(nid: str, node_data: Dict, c: ExecutionContext) -> None:

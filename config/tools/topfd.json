@@ -14,7 +14,10 @@
         "name": "mzML Files",
         "dataType": "mzml",
         "required": true,
-        "accept": ["mzml", "mzxml"],
+        "accept": [
+          "mzml",
+          "mzxml"
+        ],
         "positional": true,
         "positionalOrder": 0,
         "pattern": "{sample}.mzML"
@@ -22,12 +25,110 @@
     ],
     "outputs": [
       {
-        "id": "msalign",
-        "name": "MSAlign",
+        "id": "ms1feature",
+        "name": "MS1 Feature File",
+        "dataType": "feature",
+        "pattern": "{sample}_ms1.feature",
+        "handle": "ms1feature",
+        "provides": [
+          "feature",
+          "ms1feature"
+        ],
+        "description": "LC-MS feature file containing MS1 features",
+        "schema": [
+          {
+            "name": "feature_id",
+            "type": "number",
+            "description": "Unique feature identifier",
+            "optional": false
+          },
+          {
+            "name": "mz",
+            "type": "number",
+            "description": "Mass-to-charge ratio (m/z)",
+            "optional": false
+          },
+          {
+            "name": "rt",
+            "type": "number",
+            "description": "Retention time (seconds)",
+            "optional": false
+          },
+          {
+            "name": "intensity",
+            "type": "number",
+            "description": "Peak intensity",
+            "optional": false
+          },
+          {
+            "name": "charge",
+            "type": "number",
+            "description": "Charge state",
+            "optional": true
+          },
+          {
+            "name": "mass",
+            "type": "number",
+            "description": "Neutral mass",
+            "optional": true
+          }
+        ]
+      },
+      {
+        "id": "ms2feature",
+        "name": "MS2 Feature File",
+        "dataType": "feature",
+        "pattern": "{sample}_ms2.feature",
+        "handle": "ms2feature",
+        "provides": [
+          "feature",
+          "ms2feature"
+        ],
+        "description": "MS/MS scan IDs and their corresponding LC-MS feature IDs"
+      },
+      {
+        "id": "feature_xml",
+        "name": "Feature XML",
+        "dataType": "xml",
+        "pattern": "{sample}_feature.xml",
+        "handle": "feature_xml",
+        "provides": [
+          "xml"
+        ],
+        "description": "LC-MS features in XML format"
+      },
+      {
+        "id": "ms1_msalign",
+        "name": "MS1 MSAlign",
+        "dataType": "msalign",
+        "pattern": "{sample}_ms1.msalign",
+        "handle": "ms1_msalign",
+        "provides": [
+          "msalign"
+        ],
+        "description": "Deconvoluted MS1 spectra"
+      },
+      {
+        "id": "ms2_msalign",
+        "name": "MS2 MSAlign",
         "dataType": "msalign",
         "pattern": "{sample}_ms2.msalign",
-        "handle": "msalign",
-        "provides": ["msalign"]
+        "handle": "ms2_msalign",
+        "provides": [
+          "msalign"
+        ],
+        "description": "Deconvoluted MS/MS spectra for TopPIC"
+      },
+      {
+        "id": "html_folder",
+        "name": "HTML Visualization",
+        "dataType": "html",
+        "pattern": "{sample}_html",
+        "handle": "html_folder",
+        "provides": [
+          "html"
+        ],
+        "description": "JavaScript files for MS1 and MS/MS spectral visualization"
       }
     ]
   },

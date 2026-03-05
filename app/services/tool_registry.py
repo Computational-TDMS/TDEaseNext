@@ -10,12 +10,43 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from app.schemas.tool import ToolDefinition
+from jsonschema import validate, ValidationError
 
 logger = logging.getLogger(__name__)
 
 
 def _project_root() -> Path:
     return Path(__file__).resolve().parent.parent.parent
+
+
+def _load_validation_schema() -> Dict[str, Any]:
+    """Load JSON schema for tool definition validation"""
+    schema_path = Path(__file__).parent.parent / "schemas" / "validation" / "tool_definition_schema.json"
+    if schema_path.exists():
+        try:
+            with open(schema_path, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception as e:
+            logger.warning(f"Failed to load validation schema: {e}")
+    return {}
+
+
+def _validate_tool_definition(tool_data: Dict[str, Any], schema: Dict[str, Any]) -> bool:
+    """
+    Validate tool definition against JSON schema
+
+    Returns:
+        True if valid or schema not available, False if validation fails
+    """
+    if not schema:
+        return True  # Skip validation if schema not available
+
+    try:
+        validate(instance=tool_data, schema=schema)
+        return True
+    except ValidationError as e:
+        logger.warning(f"Tool '{tool_data.get('id')}' failed validation: {e.message}")
+        return False
 
 
 def _normalize_tool_data(raw: Dict[str, Any]) -> Dict[str, Any]:
@@ -67,6 +98,7 @@ class ToolRegistry:
         self._data_tools = data_tools_dir or (root / "data" / "tools")
         self._registry: Dict[str, Dict[str, Any]] = {}
         self._definitions: Dict[str, ToolDefinition] = {}
+        self._validation_schema = _load_validation_schema()
         self.reload()
 
     def reload(self) -> None:
@@ -87,6 +119,10 @@ class ToolRegistry:
                     if "id" in data:
                         tool_id = data["id"]
                         normalized = _normalize_tool_data(data)
+                        # Validate against schema if available
+                        if not _validate_tool_definition(normalized, self._validation_schema):
+                            logger.warning("Skipping tool '%s' due to validation errors", tool_id)
+                            continue
                         self._registry[tool_id] = normalized
                         try:
                             self._definitions[tool_id] = ToolDefinition(**normalized)
@@ -96,6 +132,10 @@ class ToolRegistry:
                         tool_id = fp.stem
                         normalized = _normalize_tool_data(data[fp.stem])
                         normalized.setdefault("id", tool_id)
+                        # Validate against schema if available
+                        if not _validate_tool_definition(normalized, self._validation_schema):
+                            logger.warning("Skipping tool '%s' due to validation errors", tool_id)
+                            continue
                         self._registry[tool_id] = normalized
                         try:
                             self._definitions[tool_id] = ToolDefinition(**normalized)
@@ -153,19 +193,36 @@ class ToolRegistry:
                     "default": pm.get("default"),
                     "required": pm.get("required", False),
                 })
+        # Include schema in outputs
+        outputs_with_schema = []
+        for o in (d.get_output_patterns() or d.outputs):
+            if isinstance(o, dict):
+                output_data = {
+                    "pattern": o.get("pattern", ""),
+                    "handle": o.get("handle") or o.get("id", "output")
+                }
+                if "schema" in o:
+                    output_data["schema"] = o["schema"]
+            else:
+                output_data = {
+                    "pattern": getattr(o, "pattern", ""),
+                    "handle": getattr(o, "effective_handle", "output")
+                }
+                if hasattr(o, 'schema') and o.schema:
+                    output_data["schema"] = o.schema
+            outputs_with_schema.append(output_data)
+
         return {
             "id": d.id,
             "name": d.name,
             "description": d.description,
+            "executionMode": d.executionMode,
             "params": params_ui,
             "inputs": [i if isinstance(i, dict) else i.model_dump() for i in d.inputs],
-            "outputs": [
-                {"pattern": o.get("pattern") if isinstance(o, dict) else getattr(o, "pattern", ""),
-                 "handle": (o.get("handle") or o.get("id")) if isinstance(o, dict) else getattr(o, "effective_handle", "output")}
-                for o in (d.get_output_patterns() or d.outputs)
-            ],
+            "outputs": outputs_with_schema,
             "param_mapping": {k: (v if isinstance(v, dict) else v.model_dump())
                              for k, v in d.param_mapping.items()},
+            "defaultMapping": d.defaultMapping if hasattr(d, 'defaultMapping') else None,
         }
 
 

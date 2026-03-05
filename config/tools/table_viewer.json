@@ -14,19 +14,29 @@
         "name": "Data File",
         "dataType": "tsv",
         "required": true,
+        "accept": ["tsv", "csv", "prsm", "proteoforms"],
         "description": "Tabular data file to visualize"
+      },
+      {
+        "id": "selection_in",
+        "name": "Selection In",
+        "dataType": "selection",
+        "required": false,
+        "description": "Optional row selection propagated from upstream interactive viewers",
+        "portKind": "state-in",
+        "semanticType": "state/selection_ids"
       }
     ],
     "outputs": [
-        {
-          "id": "selection",
-          "name": "Selection",
-          "dataType": "selection",
-          "required": false,
-          "description": "Selected rows for downstream processing",
-          "portKind": "state-out",
-          "semanticType": "state/selection_ids"
-        }
+      {
+        "id": "selection",
+        "name": "Selection",
+        "dataType": "selection",
+        "required": false,
+        "description": "Selected rows for downstream processing",
+        "portKind": "state-out",
+        "semanticType": "state/selection_ids"
+      }
     ]
   },
   "parameters": {
@@ -68,7 +78,7 @@
       {
         "id": "Sequence",
         "name": "Sequence",
-        "type": "number",
+        "type": "text",
         "visible": true,
         "sortable": true,
         "filterable": true

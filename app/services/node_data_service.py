@@ -100,27 +100,31 @@ def parse_tabular_file(file_path: Path, max_rows: Optional[int] = None) -> Dict[
     rows = []
     total_rows = 0
 
-    with open(file_path, 'r', encoding='utf-8') as f:
-        # 读取列名
-        header_line = f.readline().strip()
-        if header_line:
-            columns = header_line.split(delimiter)
+    try:
+        with open(file_path, 'r', encoding='utf-8') as f:
+            # 读取列名
+            header_line = f.readline().strip()
+            if header_line:
+                columns = header_line.split(delimiter)
 
-        # 读取数据行
-        for line in f:
-            total_rows += 1
-            if max_rows is not None and len(rows) >= max_rows:
-                # 继续计数以获取 total_rows，但不存储数据
-                continue
+            # 读取数据行
+            for line in f:
+                total_rows += 1
+                if max_rows is not None and len(rows) >= max_rows:
+                    # 继续计数以获取 total_rows，但不存储数据
+                    continue
 
-            values = line.strip().split(delimiter)
-            if len(values) == len(columns):
-                row_data = dict(zip(columns, values))
-                rows.append(row_data)
-            elif values:  # 处理列数不匹配的情况
-                # 用索引作为键
-                row_data = {f"col_{i}": v for i, v in enumerate(values)}
-                rows.append(row_data)
+                values = line.strip().split(delimiter)
+                if len(values) == len(columns):
+                    row_data = dict(zip(columns, values))
+                    rows.append(row_data)
+                elif values:  # 处理列数不匹配的情况
+                    # 用索引作为键
+                    row_data = {f"col_{i}": v for i, v in enumerate(values)}
+                    rows.append(row_data)
+    except OSError as exc:
+        logger.error("Failed to read tabular file %s: %s", file_path, exc)
+        raise ValueError(f"Failed to read file: {file_path}") from exc
 
     return {
         "columns": columns,
@@ -253,7 +257,8 @@ def resolve_node_outputs(
             "port_id": port_id,
             "data_type": data_type,
             "file_name": file_name,
-            "file_path": str(file_path.relative_to(workspace_path)) if file_exists else str(file_path),
+            "file_path": str(file_path),
+            "relative_path": str(file_path.relative_to(workspace_path)) if file_exists else str(file_path),
             "file_size": file_size,
             "exists": file_exists,
             "parseable": parseable,

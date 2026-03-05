@@ -18,7 +18,10 @@
       "mcp__deepwiki__ask_question",
       "WebSearch",
       "Bash(sqlite3:*)",
-      "Bash(test:*)"
+      "Bash(test:*)",
+      "Bash(mkdir:*)",
+      "Bash(uv pip:*)",
+      "Bash(grep:*)"
     ],
     "deny": [],
     "ask": []

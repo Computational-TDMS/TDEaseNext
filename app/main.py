@@ -46,6 +46,10 @@ try:
     compute_proxy = import_module("app.api.compute_proxy")
 except Exception:
     compute_proxy = None
+try:
+    nodes = import_module("app.api.nodes")
+except Exception:
+    nodes = None
 from app.core.websocket import manager
 
 # Configure logging
@@ -141,6 +145,8 @@ if workspace is not None:
     app.include_router(workspace.router, prefix="/api", tags=["workspace"])
 if compute_proxy is not None:
     app.include_router(compute_proxy.router, prefix="/api/compute-proxy", tags=["compute-proxy"])
+if nodes is not None:
+    app.include_router(nodes.router, prefix="/api", tags=["nodes"]) 
 
 # WebSocket route
 @app.websocket("/ws/{workflow_id}")

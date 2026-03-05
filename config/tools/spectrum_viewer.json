@@ -10,23 +10,33 @@
   "ports": {
     "inputs": [
       {
-        "id": "msalign_file",
-        "name": "MSAlign File",
-        "dataType": "msalign",
+        "id": "ms1feature_file",
+        "name": "MS1 Feature File",
+        "dataType": "ms1feature",
         "required": true,
-        "description": "Mass spectrum alignment file (msalign/tsv format)"
+        "accept": ["ms1feature", "ms1ft", "feature"],
+        "description": "MS1 feature file (TopPIC .ms1.feature or ProMex .ms1ft)"
+      },
+      {
+        "id": "selection_in",
+        "name": "Selection In",
+        "dataType": "selection",
+        "required": false,
+        "description": "Optional feature selection propagated from upstream interactive viewers",
+        "portKind": "state-in",
+        "semanticType": "state/selection_ids"
       }
     ],
     "outputs": [
-        {
-          "id": "selection",
-          "name": "Selection",
-          "dataType": "selection",
-          "required": false,
-          "description": "Selected peaks for downstream processing",
-          "portKind": "state-out",
-          "semanticType": "state/selection_ids"
-        }
+      {
+        "id": "selection",
+        "name": "Selection",
+        "dataType": "selection",
+        "required": false,
+        "description": "Selected peaks for downstream processing",
+        "portKind": "state-out",
+        "semanticType": "state/selection_ids"
+      }
     ]
   },
   "parameters": {
@@ -69,7 +79,7 @@
   "visualization": {
     "type": "spectrum",
     "dataSource": "file",
-    "filePath": "{input_basename}.msalign",
+    "filePath": "{sample}_ms1.feature",
     "columns": [
       {
         "id": "mz",

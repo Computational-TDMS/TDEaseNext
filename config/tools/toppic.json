@@ -30,12 +30,75 @@
     ],
     "outputs": [
       {
-        "id": "proteoforms",
-        "name": "Proteoforms TSV",
+        "id": "prsm",
+        "name": "PrSM TSV (All Proteins)",
         "dataType": "tsv",
-        "pattern": "{sample}_proteoforms.tsv",
+        "pattern": "{sample}_ms2_toppic_prsm.tsv",
+        "handle": "prsm",
+        "provides": ["tsv", "prsm"],
+        "description": "Proteoform spectrum-matches with E-value/FDR cutoff (all proteins reported)"
+      },
+      {
+        "id": "prsm_single",
+        "name": "PrSM TSV (Single Protein)",
+        "dataType": "tsv",
+        "pattern": "{sample}_ms2_toppic_prsm_single.tsv",
+        "handle": "prsm_single",
+        "provides": ["tsv", "prsm"],
+        "description": "Proteoform spectrum-matches with E-value/FDR cutoff (single protein reported)"
+      },
+      {
+        "id": "proteoforms",
+        "name": "Proteoforms TSV (All Proteins)",
+        "dataType": "tsv",
+        "pattern": "{sample}_ms2_toppic_proteoform.tsv",
         "handle": "proteoforms",
-        "provides": ["tsv", "proteoforms"]
+        "provides": ["tsv", "proteoforms"],
+        "description": "Identified proteoforms with E-value/proteoform-level FDR cutoff (all proteins reported)"
+      },
+      {
+        "id": "proteoforms_single",
+        "name": "Proteoforms TSV (Single Protein)",
+        "dataType": "tsv",
+        "pattern": "{sample}_ms2_toppic_proteoform_single.tsv",
+        "handle": "proteoforms_single",
+        "provides": ["tsv", "proteoforms"],
+        "description": "Identified proteoforms with E-value/proteoform-level FDR cutoff (single protein reported)"
+      },
+      {
+        "id": "proteoform_xml",
+        "name": "Proteoform XML",
+        "dataType": "xml",
+        "pattern": "{sample}_ms2_toppic_proteoform.xml",
+        "handle": "proteoform_xml",
+        "provides": ["xml"],
+        "description": "Identified proteoforms in XML format with E-value/FDR cutoff"
+      },
+      {
+        "id": "prsm_xml",
+        "name": "PrSM XML",
+        "dataType": "xml",
+        "pattern": "{sample}_ms2_toppic_prsm.xml",
+        "handle": "prsm_xml",
+        "provides": ["xml"],
+        "description": "All identified PrSMs in XML format without clustering/filtering"
+      },
+      {
+        "id": "html_folder",
+        "name": "HTML Visualization",
+        "dataType": "html",
+        "pattern": "{sample}_html",
+        "handle": "html_folder",
+        "provides": ["html"],
+        "description": "HTML files for PrSM and proteoform visualization (open topmsv/index.html in Chrome)",
+        "schema": [
+          {"id": "PrSMID", "name": "PrSM ID", "type": "string"},
+          {"id": "Sequence", "name": "Sequence", "type": "text"},
+          {"id": "Proteoform", "name": "Proteoform", "type": "text"},
+          {"id": "Mass", "name": "Mass (Da)", "type": "number"},
+          {"id": "EValue", "name": "E-Value", "type": "number"},
+          {"id": "QValue", "name": "Q-Value", "type": "number"}
+        ]
       }
     ]
   },

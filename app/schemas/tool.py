@@ -44,6 +44,10 @@ class ToolOutputDef(BaseModel):
     pattern: str = Field(..., description="输出文件模式，如 {sample}.mzML")
     handle: Optional[str] = Field(None, description="句柄，用于连线匹配")
     provides: Optional[List[str]] = Field(None, description="提供的数据类型列表")
+    column_schema: Optional[List[Dict[str, Any]]] = Field(
+        None,
+        description="Column schema with name, type, description for tabular data (alias: schema)",
+    )
 
     @property
     def effective_handle(self) -> str:
@@ -66,7 +70,7 @@ class ToolDefinition(BaseModel):
 
     # 执行相关
     toolPath: Optional[str] = Field(None, description="可执行路径或脚本路径")
-    executionMode: Optional[str] = Field(None, description="native | docker")
+    executionMode: Optional[str] = Field(None, description="native | docker | compute | interactive")
     conda_env: Optional[str] = Field(None, description="Conda 环境路径")
 
     # 输入输出
@@ -90,6 +94,10 @@ class ToolDefinition(BaseModel):
         description="参数名 -> 命令行标志映射，含 type/choices 等 UI 配置",
     )
     use_params_json: Optional[bool] = Field(None, description="是否通过 JSON 传参")
+    defaultMapping: Optional[Dict[str, Any]] = Field(
+        None,
+        description="Default column mapping for interactive visualization tools",
+    )
 
     model_config = ConfigDict(extra="allow", populate_by_name=True)
 

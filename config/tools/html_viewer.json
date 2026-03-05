@@ -1,0 +1,73 @@
+{
+  "id": "html_viewer",
+  "name": "HTML Viewer",
+  "version": "1.0.0",
+  "description": "Interactive HTML fragment viewer for TopPIC PrSM visualizations",
+  "executionMode": "interactive",
+  "command": {
+    "executable": "html_viewer"
+  },
+  "ports": {
+    "inputs": [
+      {
+        "id": "html_folder",
+        "name": "HTML Folder",
+        "dataType": "html",
+        "required": true,
+        "accept": ["html"],
+        "description": "HTML folder from TopPIC containing PrSM visualizations"
+      },
+      {
+        "id": "selection_in",
+        "name": "Selection In",
+        "dataType": "selection",
+        "required": false,
+        "description": "Feature selection ID to determine which HTML fragment to display",
+        "portKind": "state-in",
+        "semanticType": "state/selection_ids"
+      }
+    ],
+    "outputs": []
+  },
+  "parameters": {
+    "default_view": {
+      "flag": "",
+      "type": "choice",
+      "label": "Default View",
+      "description": "Default HTML page to load when no selection",
+      "group": "basic",
+      "default": "index.html",
+      "choices": ["index.html", "prsm.html", "proteoform.html"]
+    },
+    "allow_navigation": {
+      "flag": "",
+      "type": "boolean",
+      "label": "Allow Navigation",
+      "description": "Allow user to navigate within HTML content",
+      "group": "basic",
+      "default": true
+    },
+    "sandbox_mode": {
+      "flag": "",
+      "type": "boolean",
+      "label": "Sandbox Mode",
+      "description": "Enable iframe sandbox for security",
+      "group": "advanced",
+      "default": true
+    }
+  },
+  "output": {
+    "flagSupported": false
+  },
+  "visualization": {
+    "type": "html",
+    "dataSource": "folder",
+    "folderPath": "{sample}_html",
+    "config": {
+      "renderMode": "iframe",
+      "sandboxAttributes": ["allow-scripts", "allow-same-origin"],
+      "loadingIndicator": true,
+      "errorHandling": "graceful"
+    }
+  }
+}

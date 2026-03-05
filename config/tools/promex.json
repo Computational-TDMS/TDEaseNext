@@ -25,7 +25,16 @@
         "dataType": "ms1ft",
         "pattern": "{sample}.ms1ft",
         "handle": "ms1ft",
-        "provides": ["ms1ft", "feature"]
+        "provides": ["ms1ft", "feature"],
+        "schema": [
+          {"id": "FeatureID", "name": "Feature ID", "type": "string"},
+          {"id": "Mass", "name": "Mass (Da)", "type": "number"},
+          {"id": "RT", "name": "Retention Time (min)", "type": "number"},
+          {"id": "Intensity", "name": "Intensity", "type": "number"},
+          {"id": "Charge", "name": "Charge State", "type": "number"},
+          {"id": "EValue", "name": "E-Value", "type": "number"},
+          {"id": "QValue", "name": "Q-Value", "type": "number"}
+        ]
       },
       {
         "id": "feature_png",

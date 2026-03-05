@@ -42,7 +42,17 @@
         "pattern": "{sample}_IcTarget.tsv",
         "handle": "ict_target",
         "provides": ["tsv", "results"],
-        "conditional": "target_search"
+        "conditional": "target_search",
+        "schema": [
+          {"id": "PrSMID", "name": "PrSM ID", "type": "string"},
+          {"id": "Sequence", "name": "Sequence", "type": "text"},
+          {"id": "ProteinName", "name": "Protein Name", "type": "text"},
+          {"id": "Mass", "name": "Mass (Da)", "type": "number"},
+          {"id": "Charge", "name": "Charge", "type": "number"},
+          {"id": "EValue", "name": "E-Value", "type": "number"},
+          {"id": "QValue", "name": "Q-Value", "type": "number"},
+          {"id": "Score", "name": "Score", "type": "number"}
+        ]
       },
       {
         "id": "ict_decoy",

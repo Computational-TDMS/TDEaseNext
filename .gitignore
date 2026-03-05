@@ -3,6 +3,9 @@ data
 
 logs
 
+dist/
+node_modules/
+
 TDEase-FrontEnd\dist
 TDEase-FrontEnd\node_modules
 
