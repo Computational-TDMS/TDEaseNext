@@ -14,7 +14,10 @@
         "name": "Spectrum File",
         "dataType": "pbf",
         "required": true,
-        "accept": ["pbf", "raw"],
+        "accept": [
+          "pbf",
+          "raw"
+        ],
         "flag": "-s"
       },
       {
@@ -22,7 +25,11 @@
         "name": "Database File",
         "dataType": "fasta",
         "required": true,
-        "accept": ["fasta", "fa", "faa"],
+        "accept": [
+          "fasta",
+          "fa",
+          "faa"
+        ],
         "flag": "-d"
       },
       {
@@ -30,7 +37,11 @@
         "name": "Feature File",
         "dataType": "ms1ft",
         "required": false,
-        "accept": ["ms1ft", "msalign", "isos.csv"],
+        "accept": [
+          "ms1ft",
+          "msalign",
+          "isos.csv"
+        ],
         "flag": "-feature"
       }
     ],
@@ -41,17 +52,52 @@
         "dataType": "tsv",
         "pattern": "{sample}_IcTarget.tsv",
         "handle": "ict_target",
-        "provides": ["tsv", "results"],
+        "provides": [
+          "tsv",
+          "results"
+        ],
         "conditional": "target_search",
         "schema": [
-          {"id": "PrSMID", "name": "PrSM ID", "type": "string"},
-          {"id": "Sequence", "name": "Sequence", "type": "text"},
-          {"id": "ProteinName", "name": "Protein Name", "type": "text"},
-          {"id": "Mass", "name": "Mass (Da)", "type": "number"},
-          {"id": "Charge", "name": "Charge", "type": "number"},
-          {"id": "EValue", "name": "E-Value", "type": "number"},
-          {"id": "QValue", "name": "Q-Value", "type": "number"},
-          {"id": "Score", "name": "Score", "type": "number"}
+          {
+            "id": "PrSMID",
+            "name": "PrSM ID",
+            "type": "string"
+          },
+          {
+            "id": "Sequence",
+            "name": "Sequence",
+            "type": "string"
+          },
+          {
+            "id": "ProteinName",
+            "name": "Protein Name",
+            "type": "string"
+          },
+          {
+            "id": "Mass",
+            "name": "Mass (Da)",
+            "type": "number"
+          },
+          {
+            "id": "Charge",
+            "name": "Charge",
+            "type": "number"
+          },
+          {
+            "id": "EValue",
+            "name": "E-Value",
+            "type": "number"
+          },
+          {
+            "id": "QValue",
+            "name": "Q-Value",
+            "type": "number"
+          },
+          {
+            "id": "Score",
+            "name": "Score",
+            "type": "number"
+          }
         ]
       },
       {
@@ -60,7 +106,10 @@
         "dataType": "tsv",
         "pattern": "{sample}_IcDecoy.tsv",
         "handle": "ict_decoy",
-        "provides": ["tsv", "results"],
+        "provides": [
+          "tsv",
+          "results"
+        ],
         "conditional": "decoy_search"
       },
       {
@@ -69,7 +118,10 @@
         "dataType": "tsv",
         "pattern": "{sample}_IcTda.tsv",
         "handle": "ict_tda",
-        "provides": ["tsv", "results"],
+        "provides": [
+          "tsv",
+          "results"
+        ],
         "conditional": "tda_search"
       },
       {
@@ -78,7 +130,9 @@
         "dataType": "mzid",
         "pattern": "{sample}.mzid",
         "handle": "mzid",
-        "provides": ["mzid"]
+        "provides": [
+          "mzid"
+        ]
       },
       {
         "id": "ms1ft",
@@ -86,7 +140,10 @@
         "dataType": "ms1ft",
         "pattern": "{sample}.ms1ft",
         "handle": "ms1ft",
-        "provides": ["ms1ft", "feature"],
+        "provides": [
+          "ms1ft",
+          "feature"
+        ],
         "conditional": "no_feature_input"
       },
       {
@@ -95,7 +152,10 @@
         "dataType": "png",
         "pattern": "{sample}_ms1ft.png",
         "handle": "feature_png",
-        "provides": ["png", "visualization"],
+        "provides": [
+          "png",
+          "visualization"
+        ],
         "conditional": "no_feature_input"
       },
       {
@@ -104,7 +164,9 @@
         "dataType": "param",
         "pattern": "{sample}.param",
         "handle": "param",
-        "provides": ["param"]
+        "provides": [
+          "param"
+        ]
       }
     ]
   },
@@ -123,11 +185,11 @@
       "description": "Internal cleavage search mode",
       "group": "basic",
       "default": "1",
-      "choices": {
-        "No Internal Cleavage": "0",
-        "Single Internal Cleavage": "1",
-        "Multiple Internal Cleavages": "2"
-      }
+      "choices": [
+        "0",
+        "1",
+        "2"
+      ]
     },
     "tag_search": {
       "flag": "-tagSearch",
@@ -167,10 +229,10 @@
       "description": "Target-decoy approach mode",
       "group": "basic",
       "default": "0",
-      "choices": {
-        "Target only": "0",
-        "Target + Decoy": "1"
-      }
+      "choices": [
+        "0",
+        "1"
+      ]
     },
     "precursor_tolerance": {
       "flag": "-t",
@@ -274,15 +336,15 @@
       "description": "Activation method for fragmentation",
       "group": "advanced",
       "default": "6",
-      "choices": {
-        "CID": "0",
-        "ETD": "1",
-        "HCD": "2",
-        "ECD": "3",
-        "PQD": "4",
-        "UVPD": "5",
-        "Unknown": "6"
-      }
+      "choices": [
+        "0",
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6"
+      ]
     },
     "scans_file": {
       "flag": "-scansFile",

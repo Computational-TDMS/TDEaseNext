@@ -89,12 +89,19 @@ def parse_tabular_file(file_path: Path, max_rows: Optional[int] = None) -> Dict[
             "total_rows": int      # 总行数
         }
     """
+    logger.info(f"[parse_tabular_file] Starting to parse file: {file_path}")
+    logger.info(f"[parse_tabular_file] File exists: {file_path.exists()}")
+
     if not file_path.exists():
+        logger.error(f"[parse_tabular_file] File not found: {file_path}")
         raise FileNotFoundError(f"File not found: {file_path}")
 
     # 根据扩展名选择分隔符
     extension = file_path.suffix.lower()
     delimiter = ',' if extension == '.csv' else '\t'
+
+    logger.info(f"[parse_tabular_file] File extension: {extension}, delimiter: '{delimiter}'")
+    logger.info(f"[parse_tabular_file] Max rows: {max_rows}")
 
     columns = []
     rows = []
@@ -106,6 +113,9 @@ def parse_tabular_file(file_path: Path, max_rows: Optional[int] = None) -> Dict[
             header_line = f.readline().strip()
             if header_line:
                 columns = header_line.split(delimiter)
+                logger.info(f"[parse_tabular_file] Found {len(columns)} columns: {columns}")
+            else:
+                logger.warning(f"[parse_tabular_file] Empty header line in file: {file_path}")
 
             # 读取数据行
             for line in f:
@@ -122,9 +132,14 @@ def parse_tabular_file(file_path: Path, max_rows: Optional[int] = None) -> Dict[
                     # 用索引作为键
                     row_data = {f"col_{i}": v for i, v in enumerate(values)}
                     rows.append(row_data)
+
+        logger.info(f"[parse_tabular_file] Successfully parsed {len(rows)} rows (total: {total_rows})")
     except OSError as exc:
-        logger.error("Failed to read tabular file %s: %s", file_path, exc)
+        logger.error(f"[parse_tabular_file] Failed to read file {file_path}: {exc}")
         raise ValueError(f"Failed to read file: {file_path}") from exc
+    except Exception as exc:
+        logger.error(f"[parse_tabular_file] Unexpected error parsing {file_path}: {exc}")
+        raise
 
     return {
         "columns": columns,
@@ -171,10 +186,10 @@ def resolve_node_outputs(
     from app.services.tool_registry import get_tool_registry
     from app.services.sample_store import SampleStore
 
-    # 1. 查询 executions 表获取 workflow_snapshot, workspace_path, sample_id
+    # 1. 查询 executions 表获取 workflow_snapshot, workspace_path, sample_id, workflow_id
     cursor = db.cursor()
     cursor.execute(
-        "SELECT workflow_snapshot, workspace_path, sample_id FROM executions WHERE id = ?",
+        "SELECT workflow_snapshot, workspace_path, sample_id, workflow_id FROM executions WHERE id = ?",
         (execution_id,)
     )
     row = cursor.fetchone()
@@ -182,10 +197,28 @@ def resolve_node_outputs(
     if not row:
         raise ValueError(f"Execution not found: {execution_id}")
 
-    workflow_snapshot_json, workspace_path_str, sample_id = row
+    workflow_snapshot_json, workspace_path_str, sample_id = row[0], row[1], row[2]
+    workflow_id = row[3] if len(row) > 3 else None
     workspace_path = Path(workspace_path_str)
 
-    # 2. 解析 workflow_snapshot 找到节点的 tool_id
+    # 2. 解析 workflow_snapshot 找到节点的 tool_id（无 snapshot 时从 workflows 表或上次执行回退）
+    if not workflow_snapshot_json and workflow_id:
+        try:
+            cursor.execute("SELECT vueflow_data FROM workflows WHERE id = ?", (workflow_id,))
+            wf_row = cursor.fetchone()
+            if wf_row and wf_row[0]:
+                workflow_snapshot_json = wf_row[0] if isinstance(wf_row[0], str) else json.dumps(wf_row[0])
+        except Exception:
+            pass
+        if not workflow_snapshot_json:
+            try:
+                from app.services.workflow_diff import get_last_execution_snapshot
+                _, last_snapshot = get_last_execution_snapshot(db, workflow_id)
+                if last_snapshot:
+                    workflow_snapshot_json = json.dumps(last_snapshot)
+            except Exception:
+                pass
+
     if not workflow_snapshot_json:
         raise ValueError(f"Workflow snapshot is empty for execution: {execution_id}")
 
@@ -204,13 +237,19 @@ def resolve_node_outputs(
     if not node_data:
         raise ValueError(f"Node not found in workflow snapshot: {node_id}")
 
-    tool_id = node_data.get("type", "")
+    # Support both VueFlow format (type at top) and WorkflowNormalizer format (type in data)
+    tool_id = (
+        node_data.get("type")
+        or (node_data.get("data") or {}).get("type")
+        or (node_data.get("nodeConfig") or {}).get("toolId")
+        or ""
+    )
     if not tool_id:
         raise ValueError(f"Node has no tool_id: {node_id}")
 
     # 3. 查询 tool_registry 获取工具定义
     tool_registry = get_tool_registry()
-    tool_info = tool_registry.get_tool(tool_id)
+    tool_info = tool_registry.get(tool_id)
     if not tool_info:
         raise ValueError(f"Tool not found in registry: {tool_id}")
 
@@ -227,6 +266,10 @@ def resolve_node_outputs(
         sample_context = {"sample": "default"}
 
     # 5. 解析输出路径
+    logger.info(f"[resolve_node_outputs] Resolving output paths for node {node_id}")
+    logger.info(f"[resolve_node_outputs] Sample context: {sample_context}")
+    logger.info(f"[resolve_node_outputs] Workspace: {workspace_path}")
+
     output_paths = _resolve_output_paths(
         node_id=node_id,
         tool_id=tool_id,
@@ -235,8 +278,15 @@ def resolve_node_outputs(
         workspace=workspace_path
     )
 
+    logger.info(f"[resolve_node_outputs] Resolved {len(output_paths)} output paths:")
+    for idx, path in enumerate(output_paths):
+        exists = path.exists()
+        size = path.stat().st_size if exists else 0
+        logger.info(f"  [{idx}] {path} - exists: {exists}, size: {size} bytes")
+
     # 6. 获取输出端口定义
     patterns = _get_output_patterns(tool_info)
+    logger.info(f"[resolve_node_outputs] Found {len(patterns)} output patterns")
     outputs = []
 
     for idx, file_path in enumerate(output_paths):
@@ -244,14 +294,25 @@ def resolve_node_outputs(
         file_size = file_path.stat().st_size if file_exists else 0
         file_name = file_path.name
 
+        logger.info(f"[resolve_node_outputs] Processing output {idx}: {file_name}")
+        logger.info(f"  - Full path: {file_path}")
+        logger.info(f"  - Exists: {file_exists}")
+        logger.info(f"  - Size: {file_size} bytes")
+
         # 获取端口信息
         pattern_info = patterns[idx] if idx < len(patterns) else {}
         port_id = pattern_info.get("handle", pattern_info.get("id", f"port_{idx}"))
         data_type = pattern_info.get("pattern", "").split(".")[-1] if pattern_info.get("pattern") else ""
 
+        logger.info(f"  - Port ID: {port_id}")
+        logger.info(f"  - Data type: {data_type}")
+
         # 判断是否可解析
         extension = file_path.suffix.lower()
         parseable = extension in TABULAR_EXTENSIONS and file_exists
+
+        logger.info(f"  - Extension: {extension}")
+        logger.info(f"  - Parseable: {parseable} (in TABULAR_EXTENSIONS: {extension in TABULAR_EXTENSIONS})")
 
         output_entry = {
             "port_id": port_id,
@@ -268,10 +329,13 @@ def resolve_node_outputs(
         # 如果需要内联数据且文件可解析
         if include_data and file_exists and parseable:
             try:
+                logger.info(f"  - Parsing file with max_rows={max_rows}...")
                 table_data = parse_tabular_file(file_path, max_rows)
+                logger.info(f"  - Successfully parsed {len(table_data['rows'])} rows")
+                logger.info(f"  - Columns: {table_data['columns']}")
                 output_entry["data"] = table_data
             except Exception as e:
-                logger.warning(f"Failed to parse file {file_path}: {e}")
+                logger.error(f"  - Failed to parse file {file_path}: {e}", exc_info=True)
                 output_entry["parseable"] = False
 
         outputs.append(output_entry)

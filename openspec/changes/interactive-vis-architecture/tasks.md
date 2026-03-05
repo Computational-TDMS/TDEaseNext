@@ -8,11 +8,11 @@
 **Objective**: Update tool definition JSON schema to support interactive nodes and column schemas.
 
 **Subtasks**:
-- [ ] 1.1.1 Add `executionMode` field to tool definitions (values: `"compute"`, `"interactive"`)
-- [ ] 1.1.2 Add `schema` field to output port definitions with column metadata
-- [ ] 1.1.3 Add `defaultMapping` field to interactive tool definitions
-- [ ] 1.1.4 Create JSON schema validation for new fields
-- [ ] 1.1.5 Update tool registry loader to parse new fields
+- [x] 1.1.1 Add `executionMode` field to tool definitions (values: `"compute"`, `"interactive"`)
+- [x] 1.1.2 Add `schema` field to output port definitions with column metadata
+- [x] 1.1.3 Add `defaultMapping` field to interactive tool definitions
+- [x] 1.1.4 Create JSON schema validation for new fields
+- [x] 1.1.5 Update tool registry loader to parse new fields
 
 **Acceptance Criteria**:
 - Tool definitions can specify `executionMode: "interactive"`
@@ -45,10 +45,10 @@
 **Objective**: Modify workflow executor to skip interactive nodes during backend execution.
 
 **Subtasks**:
-- [ ] 1.2.1 Update `WorkflowExecutor` to check `executionMode` before node execution
-- [ ] 1.2.2 Mark interactive nodes with `status: skipped` in execution logs
-- [ ] 1.2.3 Ensure data flow edges bypass interactive nodes for dependency resolution
-- [ ] 1.2.4 Add unit tests for execution skipping logic
+- [x] 1.2.1 Update `WorkflowExecutor` to check `executionMode` before node execution
+- [x] 1.2.2 Mark interactive nodes with `status: skipped` in execution logs
+- [x] 1.2.3 Ensure data flow edges bypass interactive nodes for dependency resolution
+- [x] 1.2.4 Add unit tests for execution skipping logic
 
 **Acceptance Criteria**:
 - Backend execution skips all nodes with `executionMode: "interactive"`
@@ -64,12 +64,12 @@
 **Objective**: Extend data access API to support schema queries and row-based filtering.
 
 **Subtasks**:
-- [ ] 1.3.1 Add `/api/nodes/{node_id}/data/schema` endpoint to return column metadata
-- [ ] 1.3.2 Add `/api/nodes/{node_id}/data/rows` endpoint with row ID filtering
-- [ ] 1.3.3 Implement aggressive caching strategy for file data (LRU cache with configurable size)
-- [ ] 1.3.4 Add cache invalidation on workflow re-execution
+- [x] 1.3.1 Add `/api/nodes/{node_id}/data/schema` endpoint to return column metadata
+- [x] 1.3.2 Add `/api/nodes/{node_id}/data/rows` endpoint with row ID filtering
+- [x] 1.3.3 Implement aggressive caching strategy for file data (LRU cache with configurable size)
+- [x] 1.3.4 Add cache invalidation on workflow re-execution
 - [ ] 1.3.5 Implement streaming for large datasets (chunked responses)
-- [ ] 1.3.6 Add API documentation and integration tests
+- [x] 1.3.6 Add API documentation and integration tests
 
 **Acceptance Criteria**:
 - Schema endpoint returns column names and types for any node output
@@ -99,13 +99,13 @@ Response: [{"Mass": 1234.5, "RT": 45.2}, ...]
 **Objective**: Implement base `InteractiveNode.vue` component with configuration panel support.
 
 **Subtasks**:
-- [ ] 2.1.1 Create `InteractiveNode.vue` base component extending standard node
-- [ ] 2.1.2 Implement configuration panel modal/drawer UI
-- [ ] 2.1.3 Add schema fetching logic from NodeDataAccess API
-- [ ] 2.1.4 Implement dynamic dropdown rendering for column mapping
-- [ ] 2.1.5 Add default mapping auto-population from tool definition
-- [ ] 2.1.6 Persist mapping configuration in workflow state
-- [ ] 2.1.7 Add visual indicator for "data ready" vs "awaiting data" states
+- [x] 2.1.1 Create `InteractiveNode.vue` base component extending standard node
+- [x] 2.1.2 Implement configuration panel modal/drawer UI
+- [x] 2.1.3 Add schema fetching logic from NodeDataAccess API
+- [x] 2.1.4 Implement dynamic dropdown rendering for column mapping
+- [x] 2.1.5 Add default mapping auto-population from tool definition
+- [x] 2.1.6 Persist mapping configuration in workflow state
+- [x] 2.1.7 Add visual indicator for "data ready" vs "awaiting data" states
 
 **Acceptance Criteria**:
 - Double-clicking interactive node opens configuration panel
@@ -127,12 +127,12 @@ Response: [{"Mass": 1234.5, "RT": 45.2}, ...]
 **Objective**: Create frontend event bus for state/selection edge communication.
 
 **Subtasks**:
-- [ ] 2.2.1 Create `StateBus` singleton service with event emitter pattern
-- [ ] 2.2.2 Define event protocol for `state/selection_ids` messages
-- [ ] 2.2.3 Implement edge-based routing (emit to specific connected nodes)
-- [ ] 2.2.4 Add event logging/debugging support
+- [x] 2.2.1 Create `StateBus` singleton service with event emitter pattern
+- [x] 2.2.2 Define event protocol for `state/selection_ids` messages
+- [x] 2.2.3 Implement edge-based routing (emit to specific connected nodes)
+- [x] 2.2.4 Add event logging/debugging support
 - [ ] 2.2.5 Implement event throttling/debouncing for performance
-- [ ] 2.2.6 Add unit tests for event routing logic
+- [x] 2.2.6 Add unit tests for event routing logic
 
 **Acceptance Criteria**:
 - StateBus can emit events with `{nodeId, eventType, payload}` structure
@@ -161,11 +161,11 @@ interface SelectionEvent {
 **Objective**: Add visual distinction for state edges vs data edges.
 
 **Subtasks**:
-- [ ] 2.3.1 Create custom edge component for `state/selection` type
-- [ ] 2.3.2 Apply distinct styling (dashed line, different color)
-- [ ] 2.3.3 Add animated flow indicator for active state propagation
-- [ ] 2.3.4 Update edge creation logic to support state edge type
-- [ ] 2.3.5 Add edge type selector in UI when connecting nodes
+- [x] 2.3.1 Create custom edge component for `state/selection` type
+- [x] 2.3.2 Apply distinct styling (dashed line, different color)
+- [x] 2.3.3 Add animated flow indicator for active state propagation
+- [x] 2.3.4 Update edge creation logic to support state edge type
+- [x] 2.3.5 Add edge type selector in UI when connecting nodes (automatic based on portKind)
 
 **Acceptance Criteria**:
 - State edges are visually distinct (e.g., dashed orange line)
@@ -181,13 +181,13 @@ interface SelectionEvent {
 **Objective**: Create interactive scatter plot viewer for MS1 feature data.
 
 **Subtasks**:
-- [ ] 2.4.1 Create `FeatureMapViewer.vue` component extending InteractiveNode
-- [ ] 2.4.2 Integrate plotting library (e.g., Plotly.js or D3.js)
-- [ ] 2.4.3 Implement brush selection tool
-- [ ] 2.4.4 Emit selection events to StateBus on brush end
-- [ ] 2.4.5 Add zoom/pan controls
-- [ ] 2.4.6 Implement data point tooltips
-- [ ] 2.4.7 Add loading state and error handling
+- [x] 2.4.1 Create `FeatureMapViewer.vue` component extending InteractiveNode
+- [x] 2.4.2 Integrate plotting library (e.g., Plotly.js or D3.js)
+- [x] 2.4.3 Implement brush selection tool
+- [x] 2.4.4 Emit selection events to StateBus on brush end
+- [x] 2.4.5 Add zoom/pan controls
+- [x] 2.4.6 Implement data point tooltips
+- [x] 2.4.7 Add loading state and error handling
 - [ ] 2.4.8 Optimize rendering for large datasets (10k+ points)
 
 **Acceptance Criteria**:
@@ -210,13 +210,13 @@ interface SelectionEvent {
 **Objective**: Create MS2 spectrum viewer that responds to selection events.
 
 **Subtasks**:
-- [ ] 2.5.1 Create `SpectrumViewer.vue` component extending InteractiveNode
-- [ ] 2.5.2 Implement line/bar chart for m/z vs intensity
-- [ ] 2.5.3 Subscribe to StateBus selection events
-- [ ] 2.5.4 Filter/highlight peaks based on received row indices
-- [ ] 2.5.5 Add peak annotation display
-- [ ] 2.5.6 Implement zoom to selected region
-- [ ] 2.5.7 Add export functionality (PNG/SVG)
+- [x] 2.5.1 Create `SpectrumViewer.vue` component extending InteractiveNode
+- [x] 2.5.2 Implement line/bar chart for m/z vs intensity
+- [x] 2.5.3 Subscribe to StateBus selection events
+- [x] 2.5.4 Filter/highlight peaks based on received row indices
+- [x] 2.5.5 Add peak annotation display
+- [x] 2.5.6 Implement zoom to selected region
+- [x] 2.5.7 Add export functionality (PNG/SVG)
 
 **Acceptance Criteria**:
 - Renders spectrum with m/z on X-axis, intensity on Y-axis
@@ -233,12 +233,12 @@ interface SelectionEvent {
 **Objective**: Create viewer for TopPIC HTML fragment rendering.
 
 **Subtasks**:
-- [ ] 2.6.1 Create `HtmlViewer.vue` component extending InteractiveNode
-- [ ] 2.6.2 Implement iframe or shadow DOM for HTML rendering
-- [ ] 2.6.3 Subscribe to selection events for dynamic loading
+- [x] 2.6.1 Create `HtmlViewer.vue` component extending InteractiveNode
+- [x] 2.6.2 Implement iframe or shadow DOM for HTML rendering
+- [x] 2.6.3 Subscribe to selection events for dynamic loading
 - [ ] 2.6.4 Query backend for specific HTML fragments by row ID
-- [ ] 2.6.5 Add security sandboxing for untrusted HTML
-- [ ] 2.6.6 Implement loading states and error handling
+- [x] 2.6.5 Add security sandboxing for untrusted HTML
+- [x] 2.6.6 Implement loading states and error handling
 
 **Acceptance Criteria**:
 - Renders HTML fragments in isolated context
@@ -254,12 +254,12 @@ interface SelectionEvent {
 **Objective**: Create filterable table viewer for PrSM results.
 
 **Subtasks**:
-- [ ] 2.7.1 Create `TableViewer.vue` component extending InteractiveNode
+- [x] 2.7.1 Create `TableViewer.vue` component extending InteractiveNode
 - [ ] 2.7.2 Implement virtual scrolling for large datasets
-- [ ] 2.7.3 Subscribe to selection events for row filtering
-- [ ] 2.7.4 Add column sorting and filtering
-- [ ] 2.7.5 Implement row selection (emit to StateBus)
-- [ ] 2.7.6 Add CSV export functionality
+- [x] 2.7.3 Subscribe to selection events for row filtering
+- [x] 2.7.4 Add column sorting and filtering
+- [x] 2.7.5 Implement row selection (emit to StateBus)
+- [x] 2.7.6 Add CSV export functionality
 
 **Acceptance Criteria**:
 - Renders tables with 100k+ rows smoothly (virtual scrolling)
@@ -278,12 +278,12 @@ interface SelectionEvent {
 **Objective**: Define JSON configurations for all interactive viewer tools.
 
 **Subtasks**:
-- [ ] 3.1.1 Create `config/tools/featuremap_viewer.json`
-- [ ] 3.1.2 Create `config/tools/spectrum_viewer.json`
-- [ ] 3.1.3 Create `config/tools/html_viewer.json`
-- [ ] 3.1.4 Create `config/tools/table_viewer.json`
-- [ ] 3.1.5 Define schemas for common bioinformatics file types
-- [ ] 3.1.6 Validate all tool definitions against schema
+- [x] 3.1.1 Create `config/tools/featuremap_viewer.json`
+- [x] 3.1.2 Create `config/tools/spectrum_viewer.json`
+- [x] 3.1.3 Create `config/tools/html_viewer.json`
+- [x] 3.1.4 Create `config/tools/table_viewer.json`
+- [x] 3.1.5 Define schemas for common bioinformatics file types
+- [x] 3.1.6 Validate all tool definitions against schema
 
 **Acceptance Criteria**:
 - All interactive tools have valid JSON definitions
@@ -298,10 +298,10 @@ interface SelectionEvent {
 **Objective**: Add output schemas to existing compute tool definitions.
 
 **Subtasks**:
-- [ ] 3.2.1 Add schema to `topfd.json` for ms1feature output
-- [ ] 3.2.2 Add schema to `promex.json` for feature output
-- [ ] 3.2.3 Add schema to `mspathfinder.json` for PrSM output
-- [ ] 3.2.4 Add schema to `toppic.json` for HTML output metadata
+- [x] 3.2.1 Add schema to `topfd.json` for ms1feature output
+- [x] 3.2.2 Add schema to `promex.json` for feature output
+- [x] 3.2.3 Add schema to `mspathfinder.json` for PrSM output
+- [x] 3.2.4 Add schema to `toppic.json` for HTML output metadata
 - [ ] 3.2.5 Document schema format in `docs/TOOL_DEFINITION_SCHEMA.md`
 
 **Acceptance Criteria**:

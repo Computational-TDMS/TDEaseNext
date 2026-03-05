@@ -21,7 +21,13 @@
       "Bash(test:*)",
       "Bash(mkdir:*)",
       "Bash(uv pip:*)",
-      "Bash(grep:*)"
+      "Bash(grep:*)",
+      "Bash(uv run:*)",
+      "Bash(mv:*)",
+      "Bash(du:*)",
+      "Bash(npx openspec:*)",
+      "Bash(pnpm add:*)",
+      "Bash(pnpm test:*)"
     ],
     "deny": [],
     "ask": []

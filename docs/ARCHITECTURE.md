@@ -677,6 +677,8 @@ def build(self, param_values, input_files, output_dir):
 ### 工具注册与插件（Section 9 基础）
 
 - **后端工具注册接口**（`TDEase-FrontEnd/src/types/tool-registration.ts`）：`IBackendToolRegistration`、`IToolRegistryAdapter`，与现有 `/api/tools/schemas` 及 `useToolsRegistry` 对齐，便于扩展多数据源。
+- **工具注册表单一数据源**（2026-03 更新）：`useToolsRegistry`、`workflow.ts`、`PropertyPanel`、`NodePalette` 统一通过 `apiClient` 请求 `/api/tools/schemas`，并在 `ensureToolsLoaded()` 中支持空结果自动重试，避免“节点可渲染但属性/工具栏无配置”的分裂状态。
+- **toolId 解析统一规则**（2026-03 更新）：前端按 `nodeConfig.toolId -> data.toolId -> data.type -> node.type(非 tool)` 顺序解析工具标识，兼容新旧工作流 JSON，防止属性面板与注册表匹配失败。
 - **动态节点类型加载**：同文件内 `INodeTypeLoader`、`NodeTypeRegistration`，支持按工具/类型动态注册 Vue Flow 节点组件。
 - **工具元数据管理**：`ToolMetadata`、`IToolMetadataManager`，用于 UI 展示、分类与发现。
 - **复杂工具配置 UI**：`ToolConfigUIDescriptor`、`IConfigUIRegistry`，支持分节、折叠与自定义组件。
@@ -691,3 +693,165 @@ def build(self, param_values, input_files, output_dir):
 - [工作流格式说明](guides/workflow-format.md) - VueFlow JSON 格式
 - [工作空间管理](guides/workspace-management.md) - 文件传递和路径管理
 - [工具注册指南](guides/tool-registration.md) - 如何添加新工具
+
+## 交互式可视化架构 (2025-03-05)
+
+### 概述
+
+TDEase 现在支持**交互式可视化节点**（Interactive View Nodes），与计算节点（Compute Nodes）协同工作，提供实时交叉过滤（Cross-Filtering）能力。
+
+### 核心概念
+
+#### 1. 节点类型分类
+
+**计算节点 (Compute Nodes)**:
+- 执行模式: `executionMode: "native"` 或 `"compute"`
+- 后端实际执行工具（TopFD, TopPIC, ProMex 等）
+- 产生物理输出文件（.feature, .tsv, .html 等）
+- 状态: `pending` → `running` → `completed` 或 `failed`
+
+**视图节点 (Interactive View Nodes)**:
+- 执行模式: `executionMode: "interactive"`
+- 不在后端执行，仅在前端渲染
+- 接收文件级输入，**在内部配置面板**中映射列
+- 状态: `awaiting data` → `ready`
+
+#### 2. 数据流 vs 状态流
+
+**数据流 (Data Flow)**:
+- 边类型: `connectionKind: "data"`
+- 样式: 实线蓝色
+- 传递: 物理文件（TopFD 输出 → FeatureMap 输入）
+- 用途: 建立数据血缘关系
+
+**状态流 (State Flow)**:
+- 边类型: `connectionKind: "state"`
+- 样式: 虚线橙色，带动画流指示器
+- 传递: 行 ID 索引（FeatureMap 选中 → Spectrum 过滤）
+- 用途: 实时交叉过滤
+
+#### 3. 内部配置面板
+
+**为什么不用列级端口？**
+- ❌ 旧方案: 在 Canvas 上为每列创建端口 → 视觉混乱
+- ✅ 新方案: 文件级端口 + 内部配置 → 简洁且强大
+
+**配置面板功能**:
+1. 双击交互节点打开配置面板
+2. 自动从上游节点 Schema 填充下拉列表
+3. 支持默认映射（`defaultMapping`）
+4. 配置持久化到工作流状态
+
+### 技术实现
+
+#### 后端扩展
+
+1. **Tool Definition Schema**:
+   ```json
+   {
+     "executionMode": "interactive",
+     "defaultMapping": {"x": "rt", "y": "mz"},
+     "ports": {
+       "outputs": [{"id": "selection", "semanticType": "state/selection_ids"}]
+     }
+   }
+   ```
+
+2. **WorkflowExecutor 跳过逻辑**:
+   ```python
+   if tool_info.get("executionMode") == "interactive":
+       logger.info(f"Skipping interactive node: {node_id}")
+       return None  # 不执行
+   ```
+
+3. **数据访问 API**:
+   - `/api/nodes/{node_id}/data/schema` - 获取列元数据
+   - `/api/nodes/{node_id}/data/rows?row_ids=0,5,12` - 行过滤
+   - `/api/nodes/{node_id}/html/{row_id}` - HTML 片段
+
+#### 前端组件
+
+1. **StateBus 状态总线** (`TDEase-FrontEnd/src/stores/state-bus.ts`):
+   ```typescript
+   // 发送选择事件
+   stateBus.dispatch(nodeId, 'selection_out', {
+     semanticType: 'state/selection_ids',
+     data: new Set([0, 5, 12]),  // 行 ID
+     timestamp: Date.now()
+   })
+   ```
+
+2. **InteractiveNode.vue** 基础组件:
+   - 配置面板（ColumnConfigPanel），有上游连接时即可显示列映射
+   - 数据加载：当上游为交互节点（state 连接）时，通过 `findOriginalFileSource` 追溯至计算节点加载数据
+   - Schema/defaultMapping 自动加载（来自 tool 定义）
+   - 状态订阅
+   - 可视化渲染（支持「有数据则渲染，无需再运行」）
+
+3. **可视化查看器**:
+   - `FeatureMapViewer.vue` - Plotly.js 散点图 + 画刷选择
+   - `SpectrumViewer.vue` - MS2 质谱图
+   - `HtmlViewer.vue` - iframe/shadow DOM 渲染
+   - `TableViewer.vue` - 虚拟滚动表格
+
+### 工作流示例
+
+```json
+{
+  "nodes": [
+    {"id": "topfd_1", "type": "topfd"},
+    {"id": "featuremap_1", "type": "featuremap_viewer"},
+    {"id": "spectrum_1", "type": "spectrum_viewer"}
+  ],
+  "edges": [
+    {
+      "source": "topfd_1",
+      "target": "featuremap_1",
+      "connectionKind": "data"  // 数据流
+    },
+    {
+      "source": "featuremap_1",
+      "target": "spectrum_1",
+      "connectionKind": "state",  // 状态流
+      "semanticType": "state/selection_ids"
+    }
+  ]
+}
+```
+
+### 使用场景
+
+**场景 1: MS1 特征 → MS2 质谱交叉过滤**
+1. TopFD 执行，生成 MS1 特征文件
+2. FeatureMap 加载特征数据，渲染散点图
+3. 用户画刷选择特征点
+4. StateBus 发送 `state/selection_ids` 事件
+5. Spectrum 接收事件，过滤/高亮匹配的质谱峰
+
+**场景 2: 特征 → PrSM HTML 片段**
+1. TopPIC 执行，生成 PrSM 结果和 HTML
+2. 用户在 FeatureMap 选择特征
+3. HTML Viewer 接收选择事件，调用 `/api/nodes/{node_id}/html/{row_id}`
+4. 显示特定 PrSM 的序列可视化
+
+### 性能优化
+
+1. **LRU 缓存**: Schema 和行数据缓存
+2. **事件节流**: StateBus 事件去抖（100ms）
+3. **虚拟滚动**: Table Viewer 支持 100k+ 行
+4. **按需加载**: 只加载可见数据
+
+### 测试覆盖
+
+- 后端单元测试: 8/8 通过
+- HTML Fragment API: 6/6 通过
+- 集成测试: 7/7 通过
+- **总计: 21/21 通过 (100%)**
+
+### 相关文档
+
+- [交互式节点用户指南](INTERACTIVE_NODES.md)
+- [交互式可视化实现报告](INTERACTIVE_VIS_IMPLEMENTATION_REPORT.md)
+- [StateBus 协议文档](STATE_BUS_PROTOCOL.md)
+- [测试覆盖率分析](TEST_COVERAGE_FINAL_REPORT.md)
+

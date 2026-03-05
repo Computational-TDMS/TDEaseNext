@@ -38,13 +38,7 @@
       "description": "Output format",
       "group": "basic",
       "default": "mzML",
-      "choices": {
-        "mzML": "--mzML",
-        "mzXML": "--mzXML",
-        "mgf": "--mgf",
-        "mz5": "--mz5",
-        "mzMLb": "--mzMLb"
-      }
+      "choices": ["mzML", "mzXML", "mgf", "mz5", "mzMLb"]
     },
     "mz_precision": {
       "flag": "",
@@ -53,10 +47,7 @@
       "description": "m/z precision (bits)",
       "group": "advanced",
       "default": "64",
-      "choices": {
-        "32": "--mz32",
-        "64": "--mz64"
-      }
+      "choices": ["32", "64"]
     },
     "intensity_precision": {
       "flag": "",
@@ -65,10 +56,7 @@
       "description": "Intensity precision (bits)",
       "group": "advanced",
       "default": "64",
-      "choices": {
-        "32": "--inten32",
-        "64": "--inten64"
-      }
+      "choices": ["32", "64"]
     },
     "default_precision": {
       "flag": "",
@@ -77,10 +65,7 @@
       "description": "Default precision (bits)",
       "group": "advanced",
       "default": "64",
-      "choices": {
-        "32": "--32",
-        "64": "--64"
-      }
+      "choices": ["32", "64"]
     },
     "filters": {
       "flag": "--filter",

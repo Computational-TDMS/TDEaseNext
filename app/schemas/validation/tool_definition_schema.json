@@ -31,11 +31,12 @@
       "type": "string",
       "enum": [
         "native",
+        "script",
         "docker",
         "compute",
         "interactive"
       ],
-      "description": "Tool execution mode: native (local binary), docker (container), compute (batch processing), interactive (visualization)"
+      "description": "Tool execution mode: native (local binary), script (via interpreter), docker (container), compute (batch processing), interactive (visualization)"
     },
     "command": {
       "type": "object",

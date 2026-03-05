@@ -14,7 +14,9 @@
         "name": "MSAlign Files",
         "dataType": "msalign",
         "required": true,
-        "accept": ["msalign"],
+        "accept": [
+          "msalign"
+        ],
         "positional": true,
         "positionalOrder": 1
       },
@@ -23,7 +25,9 @@
         "name": "FASTA Database",
         "dataType": "fasta",
         "required": true,
-        "accept": ["fasta"],
+        "accept": [
+          "fasta"
+        ],
         "positional": true,
         "positionalOrder": 0
       }
@@ -35,7 +39,10 @@
         "dataType": "tsv",
         "pattern": "{sample}_ms2_toppic_prsm.tsv",
         "handle": "prsm",
-        "provides": ["tsv", "prsm"],
+        "provides": [
+          "tsv",
+          "prsm"
+        ],
         "description": "Proteoform spectrum-matches with E-value/FDR cutoff (all proteins reported)"
       },
       {
@@ -44,7 +51,10 @@
         "dataType": "tsv",
         "pattern": "{sample}_ms2_toppic_prsm_single.tsv",
         "handle": "prsm_single",
-        "provides": ["tsv", "prsm"],
+        "provides": [
+          "tsv",
+          "prsm"
+        ],
         "description": "Proteoform spectrum-matches with E-value/FDR cutoff (single protein reported)"
       },
       {
@@ -53,7 +63,10 @@
         "dataType": "tsv",
         "pattern": "{sample}_ms2_toppic_proteoform.tsv",
         "handle": "proteoforms",
-        "provides": ["tsv", "proteoforms"],
+        "provides": [
+          "tsv",
+          "proteoforms"
+        ],
         "description": "Identified proteoforms with E-value/proteoform-level FDR cutoff (all proteins reported)"
       },
       {
@@ -62,7 +75,10 @@
         "dataType": "tsv",
         "pattern": "{sample}_ms2_toppic_proteoform_single.tsv",
         "handle": "proteoforms_single",
-        "provides": ["tsv", "proteoforms"],
+        "provides": [
+          "tsv",
+          "proteoforms"
+        ],
         "description": "Identified proteoforms with E-value/proteoform-level FDR cutoff (single protein reported)"
       },
       {
@@ -71,7 +87,9 @@
         "dataType": "xml",
         "pattern": "{sample}_ms2_toppic_proteoform.xml",
         "handle": "proteoform_xml",
-        "provides": ["xml"],
+        "provides": [
+          "xml"
+        ],
         "description": "Identified proteoforms in XML format with E-value/FDR cutoff"
       },
       {
@@ -80,7 +98,9 @@
         "dataType": "xml",
         "pattern": "{sample}_ms2_toppic_prsm.xml",
         "handle": "prsm_xml",
-        "provides": ["xml"],
+        "provides": [
+          "xml"
+        ],
         "description": "All identified PrSMs in XML format without clustering/filtering"
       },
       {
@@ -89,15 +109,41 @@
         "dataType": "html",
         "pattern": "{sample}_html",
         "handle": "html_folder",
-        "provides": ["html"],
+        "provides": [
+          "html"
+        ],
         "description": "HTML files for PrSM and proteoform visualization (open topmsv/index.html in Chrome)",
         "schema": [
-          {"id": "PrSMID", "name": "PrSM ID", "type": "string"},
-          {"id": "Sequence", "name": "Sequence", "type": "text"},
-          {"id": "Proteoform", "name": "Proteoform", "type": "text"},
-          {"id": "Mass", "name": "Mass (Da)", "type": "number"},
-          {"id": "EValue", "name": "E-Value", "type": "number"},
-          {"id": "QValue", "name": "Q-Value", "type": "number"}
+          {
+            "id": "PrSMID",
+            "name": "PrSM ID",
+            "type": "string"
+          },
+          {
+            "id": "Sequence",
+            "name": "Sequence",
+            "type": "string"
+          },
+          {
+            "id": "Proteoform",
+            "name": "Proteoform",
+            "type": "string"
+          },
+          {
+            "id": "Mass",
+            "name": "Mass (Da)",
+            "type": "number"
+          },
+          {
+            "id": "EValue",
+            "name": "E-Value",
+            "type": "number"
+          },
+          {
+            "id": "QValue",
+            "name": "Q-Value",
+            "type": "number"
+          }
         ]
       }
     ]

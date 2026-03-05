@@ -56,29 +56,6 @@ TDEase-Backend/
 └── start_fastapi.py           # 启动脚本
 ```
 
-## 快速开始
-
-### 1. 安装依赖
-
-```bash
-uv add fastapi uvicorn pydantic pydantic-settings aiosqlite
-```
-
-### 2. 初始化数据库
-
-```bash
-python -m app.database.init_db
-```
-
-### 3. 启动服务
-
-```bash
-python start_fastapi.py
-```
-
-### 4. 访问API文档
-
-打开浏览器访问: http://localhost:8000/docs
 
 ## API端点
 
@@ -142,30 +119,6 @@ python test_phase2_api.py
 - 工具发现: 自动适配平台特定的可执行文件格式
 - 路径处理: 使用标准库确保跨平台兼容
 
-## 配置说明
-
-主配置文件: `config/app_config.yaml`
-
-```yaml
-app:
-  name: "TDEase"
-  version: "1.0.0"
-  host: "0.0.0.0"
-  port: 8000
-  debug: false
-
-database:
-  type: "sqlite"
-  path: "data/tdease.db"
-
-cors:
-  allow_origins:
-    - "http://localhost:3000"
-    - "http://127.0.0.1:3000"
-  allow_credentials: true
-  allow_methods: ["*"]
-  allow_headers: ["*"]
-```
 
 ## 故障排除
 
@@ -196,14 +149,6 @@ tail -f logs/app.log
 # FlowEngine执行日志
 tail -f data/workflows/{workflow_id}/logs/engine.log
 ```
-
-## 贡献指南
-
-1. Fork项目
-2. 创建功能分支
-3. 提交更改
-4. 推送到分支
-5. 创建Pull Request
 
 ## 许可证
 

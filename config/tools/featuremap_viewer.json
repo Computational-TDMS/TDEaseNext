@@ -1,12 +1,12 @@
 {
   "id": "featuremap_viewer",
   "name": "Feature Map Viewer",
-  "version": "1.0.0",
-  "description": "Interactive visualization tool for LC-MS feature maps",
+  "version": "1.1.0",
+  "description": "Interactive visualization tool for LC-MS feature maps - supports both TopFD and ProMex output formats",
   "executionMode": "interactive",
   "defaultMapping": {
-    "x": "mz",
-    "y": "rt",
+    "x": "rt",
+    "y": "mz",
     "color": "intensity",
     "size": "charge",
     "label": "feature_id"
@@ -14,15 +14,50 @@
   "ports": {
     "inputs": [
       {
-        "id": "feature_data",
-        "name": "Feature Data",
-        "dataType": "feature",
-        "required": true,
-        "accept": ["feature", "ms1ft"],
-        "pattern": "{sample}_ms1.feature"
+        "id": "topfd_feature",
+        "name": "TopFD Feature Data",
+        "dataType": "ms1feature",
+        "required": false,
+        "accept": ["ms1feature", "feature"],
+        "pattern": "{sample}_ms1.feature",
+        "description": "TopFD MS1 feature output file (.ms1.feature)",
+        "columnMapping": {
+          "feature_id": "feature_id",
+          "mz": "mz",
+          "rt": "rt",
+          "intensity": "intensity",
+          "charge": "charge",
+          "mass": "mass"
+        }
+      },
+      {
+        "id": "promex_feature",
+        "name": "ProMex Feature Data",
+        "dataType": "ms1ft",
+        "required": false,
+        "accept": ["ms1ft", "feature"],
+        "pattern": "{sample}.ms1ft",
+        "description": "ProMex MS1 feature output file (.ms1ft)",
+        "columnMapping": {
+          "feature_id": "FeatureID",
+          "mz": "Mass",
+          "rt": "RT",
+          "intensity": "Intensity",
+          "charge": "Charge",
+          "mass": "Mass"
+        }
       }
     ],
-    "outputs": []
+    "outputs": [
+      {
+        "id": "selection_out",
+        "name": "Selection Output",
+        "dataType": "selection",
+        "portKind": "state-out",
+        "semanticType": "state/selection_ids",
+        "description": "Feature selection state propagated to downstream nodes"
+      }
+    ]
   },
   "parameters": {
     "plot_type": {

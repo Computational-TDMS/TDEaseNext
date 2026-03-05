@@ -14,7 +14,11 @@
         "name": "MS1 Feature File",
         "dataType": "ms1feature",
         "required": true,
-        "accept": ["ms1feature", "ms1ft", "feature"],
+        "accept": [
+          "ms1feature",
+          "ms1ft",
+          "feature"
+        ],
         "description": "MS1 feature file (TopPIC .ms1.feature or ProMex .ms1ft)"
       },
       {
@@ -35,7 +39,8 @@
         "required": false,
         "description": "Selected peaks for downstream processing",
         "portKind": "state-out",
-        "semanticType": "state/selection_ids"
+        "semanticType": "state/selection_ids",
+        "pattern": "{sample}_selection.json"
       }
     ]
   },
@@ -123,7 +128,11 @@
       "showPeaks": true,
       "enableBrush": true,
       "tooltipEnabled": true,
-      "exportFormats": ["png", "svg", "csv"]
+      "exportFormats": [
+        "png",
+        "svg",
+        "csv"
+      ]
     }
   }
 }

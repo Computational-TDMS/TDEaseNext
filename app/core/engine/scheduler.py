@@ -88,6 +88,27 @@ class FlowEngine:
         node_states = {nid: self.graph.get_node(nid).state for nid in order}
         return {"status": "dryrun", "nodes": {k: v.value for k, v in node_states.items()}}
 
+    def _should_skip_node(self, nid: str, node) -> tuple[bool, str]:
+        """
+        Check if a node should be skipped during execution.
+
+        Returns:
+            tuple[bool, str]: (should_skip, skip_reason)
+        """
+        # Check if node has executionMode: "interactive"
+        node_data = node.data if node else {}
+        execution_mode = node_data.get("executionMode") or \
+                       node_data.get("nodeConfig", {}).get("executionMode")
+
+        if execution_mode == "interactive":
+            return True, "interactive node"
+
+        # Check resume mode and output existence
+        if self.context.resume and self._output_check_fn(nid, node_data, self.context):
+            return True, "output exists"
+
+        return False, ""
+
     async def _execute_loop(self) -> Dict[str, Any]:
         """主执行循环"""
         while not self._cancelled and not self.graph.all_done():
@@ -103,13 +124,18 @@ class FlowEngine:
                 node = self.graph.get_node(nid)
                 if not node:
                     continue
-                if self.context.resume and self._output_check_fn(nid, node.data, self.context):
+
+                # Check if node should be skipped
+                should_skip, skip_reason = self._should_skip_node(nid, node)
+                if should_skip:
                     self.graph.set_state(nid, NodeState.SKIPPED)
+                    logger.info(f"Skipping node {nid}: {skip_reason}")
                     if self._on_node_state:
                         self._on_node_state(nid, "skipped")
                     if self._on_node_skipped:
                         self._on_node_skipped(nid, node.data)
                     continue
+
                 tasks.append(self._run_node(nid, node))
             if tasks:
                 results = await asyncio.gather(*tasks, return_exceptions=True)

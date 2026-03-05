@@ -1,0 +1,702 @@
+{
+  "metadata": {
+    "id": "wf_test_full_fixed",
+    "name": "TOPFD/TOPPIC + InformedProteomics 并行测试工作流 (Fixed)",
+    "version": "3.1.0",
+    "description": "修复端口定义 - TopFD+TopPIC 与 PBFGen+ProMex+MSPathFinderT 同时运行",
+    "author": "TDEase",
+    "created": "2026-03-05T00:00:00Z",
+    "modified": "2026-03-05T00:00:00Z",
+    "tags": [
+      "test",
+      "parallel",
+      "topfd",
+      "toppic",
+      "pbfgen",
+      "promex",
+      "mspathfindert",
+      "interactive",
+      "featuremap",
+      "spectrum",
+      "fixed"
+    ]
+  },
+  "format_version": "2.0",
+  "nodes": [
+    {
+      "id": "data_loader_1",
+      "type": "data_loader",
+      "position": {
+        "x": 120,
+        "y": 80
+      },
+      "data": {
+        "label": "数据加载器"
+      },
+      "nodeConfig": {
+        "toolId": "data_loader",
+        "paramValues": {
+          "input_sources": [
+            "data/raw/Sorghum-Histone0810162L20.raw"
+          ],
+          "copy_strategy": "copy"
+        }
+      },
+      "inputs": [],
+      "outputs": [
+        {
+          "id": "mzml",
+          "name": "mzML",
+          "dataType": "mzml"
+        }
+      ]
+    },
+    {
+      "id": "fasta_loader_1",
+      "type": "fasta_loader",
+      "position": {
+        "x": 120,
+        "y": 200
+      },
+      "data": {
+        "label": "FASTA加载器"
+      },
+      "nodeConfig": {
+        "toolId": "fasta_loader",
+        "paramValues": {
+          "fasta_file": "data/fasta/UniProt_sorghum_focus1.fasta",
+          "copy_strategy": "copy"
+        }
+      },
+      "inputs": [],
+      "outputs": [
+        {
+          "id": "fasta",
+          "name": "FASTA",
+          "dataType": "fasta"
+        }
+      ]
+    },
+    {
+      "id": "msconvert_1",
+      "type": "msconvert",
+      "position": {
+        "x": 300,
+        "y": 80
+      },
+      "data": {
+        "label": "MSConvert"
+      },
+      "nodeConfig": {
+        "toolId": "msconvert",
+        "paramValues": {
+          "format": "mzML",
+          "mz_precision": "64",
+          "intensity_precision": "64",
+          "filters": "peakPicking true 1-"
+        }
+      },
+      "inputs": [
+        {
+          "id": "input_files",
+          "name": "Input Files",
+          "dataType": "raw",
+          "required": true
+        }
+      ],
+      "outputs": [
+        {
+          "id": "mzml",
+          "name": "mzML",
+          "dataType": "mzml"
+        }
+      ]
+    },
+    {
+      "id": "pbfgen_1",
+      "type": "pbfgen",
+      "position": {
+        "x": 300,
+        "y": 200
+      },
+      "data": {
+        "label": "PBFGen"
+      },
+      "nodeConfig": {
+        "toolId": "pbfgen",
+        "paramValues": {}
+      },
+      "inputs": [
+        {
+          "id": "input_file",
+          "name": "Input File",
+          "dataType": "raw",
+          "required": true
+        }
+      ],
+      "outputs": [
+        {
+          "id": "pbf",
+          "name": "PBF File",
+          "dataType": "pbf"
+        }
+      ]
+    },
+    {
+      "id": "topfd_1",
+      "type": "topfd",
+      "position": {
+        "x": 520,
+        "y": 80
+      },
+      "data": {
+        "label": "TopFD"
+      },
+      "nodeConfig": {
+        "toolId": "topfd",
+        "paramValues": {
+          "activation": "FILE",
+          "max_charge": "30",
+          "max_mass": "70000",
+          "mz_error": "0.02",
+          "ms_one_sn_ratio": "3",
+          "ms_two_sn_ratio": "1",
+          "precursor_window": "3.0",
+          "ecscore_cutoff": "0.1",
+          "min_scan_number": "1",
+          "thread_number": "12",
+          "env_cnn_cutoff": "0.0",
+          "split_intensity_ratio": "2.5"
+        }
+      },
+      "inputs": [
+        {
+          "id": "input_files",
+          "name": "mzML Files",
+          "dataType": "mzml",
+          "required": true
+        }
+      ],
+      "outputs": [
+        {
+          "id": "ms1feature",
+          "name": "MS1 Feature File",
+          "dataType": "feature",
+          "description": "LC-MS feature file containing MS1 features"
+        },
+        {
+          "id": "ms2feature",
+          "name": "MS2 Feature File",
+          "dataType": "feature",
+          "description": "MS/MS scan IDs and their corresponding LC-MS feature IDs"
+        },
+        {
+          "id": "feature_xml",
+          "name": "Feature XML",
+          "dataType": "xml",
+          "description": "LC-MS features in XML format"
+        },
+        {
+          "id": "ms1_msalign",
+          "name": "MS1 MSAlign",
+          "dataType": "msalign",
+          "description": "Deconvoluted MS1 spectra"
+        },
+        {
+          "id": "ms2_msalign",
+          "name": "MS2 MSAlign",
+          "dataType": "msalign",
+          "description": "Deconvoluted MS/MS spectra for TopPIC"
+        },
+        {
+          "id": "html_folder",
+          "name": "HTML Visualization",
+          "dataType": "html",
+          "description": "JavaScript files for MS1 and MS/MS spectral visualization"
+        }
+      ]
+    },
+    {
+      "id": "promex_1",
+      "type": "promex",
+      "position": {
+        "x": 520,
+        "y": 200
+      },
+      "data": {
+        "label": "ProMex"
+      },
+      "nodeConfig": {
+        "toolId": "promex",
+        "paramValues": {
+          "min_charge": "2",
+          "max_charge": "60",
+          "min_mass": "2000",
+          "max_mass": "50000",
+          "feature_map": true,
+          "max_threads": "0"
+        }
+      },
+      "inputs": [
+        {
+          "id": "input_file",
+          "name": "Input File",
+          "dataType": "pbf",
+          "required": true
+        }
+      ],
+      "outputs": [
+        {
+          "id": "ms1ft",
+          "name": "MS1 Feature File",
+          "dataType": "ms1ft"
+        },
+        {
+          "id": "feature_png",
+          "name": "Feature Heatmap",
+          "dataType": "png"
+        }
+      ]
+    },
+    {
+      "id": "toppic_1",
+      "type": "toppic",
+      "position": {
+        "x": 800,
+        "y": 80
+      },
+      "data": {
+        "label": "TopPIC"
+      },
+      "nodeConfig": {
+        "toolId": "toppic",
+        "paramValues": {
+          "activation": "FILE",
+          "n_terminal_form": "NONE,NME,NME_ACETYLATION,M_ACETYLATION",
+          "proteoform_type": "COMPLETE,PREFIX,SUFFIX,INTERNAL",
+          "num_shift": "1",
+          "min_shift": "-500",
+          "max_shift": "500",
+          "variable_ptm_num": "3",
+          "mass_error_tolerance": "10",
+          "proteoform_error_tolerance": "1.2",
+          "spectrum_cutoff_type": "EVALUE",
+          "spectrum_cutoff_value": "0.01",
+          "proteoform_cutoff_type": "EVALUE",
+          "proteoform_cutoff_value": "0.01",
+          "miscore_threshold": "0.15",
+          "thread_number": "12",
+          "num_combined_spectra": "1"
+        }
+      },
+      "inputs": [
+        {
+          "id": "fasta_file",
+          "name": "FASTA 文件",
+          "dataType": "fasta",
+          "required": true
+        },
+        {
+          "id": "msalign_files",
+          "name": "MSAlign 文件",
+          "dataType": "msalign",
+          "required": true
+        }
+      ],
+      "outputs": [
+        {
+          "id": "prsm",
+          "name": "PrSM TSV (All Proteins)",
+          "dataType": "tsv",
+          "description": "Proteoform spectrum-matches with E-value/FDR cutoff (all proteins reported)"
+        },
+        {
+          "id": "prsm_single",
+          "name": "PrSM TSV (Single Protein)",
+          "dataType": "tsv",
+          "description": "Proteoform spectrum-matches with E-value/FDR cutoff (single protein reported)"
+        },
+        {
+          "id": "proteoforms",
+          "name": "Proteoforms TSV (All Proteins)",
+          "dataType": "tsv",
+          "description": "Identified proteoforms with E-value/proteoform-level FDR cutoff (all proteins reported)"
+        },
+        {
+          "id": "proteoforms_single",
+          "name": "Proteoforms TSV (Single Protein)",
+          "dataType": "tsv",
+          "description": "Identified proteoforms with E-value/proteoform-level FDR cutoff (single protein reported)"
+        },
+        {
+          "id": "proteoform_xml",
+          "name": "Proteoform XML",
+          "dataType": "xml",
+          "description": "Identified proteoforms in XML format with E-value/FDR cutoff"
+        },
+        {
+          "id": "prsm_xml",
+          "name": "PrSM XML",
+          "dataType": "xml",
+          "description": "All identified PrSMs in XML format without clustering/filtering"
+        },
+        {
+          "id": "html_folder",
+          "name": "HTML Visualization",
+          "dataType": "html",
+          "description": "HTML files for PrSM and proteoform visualization (open topmsv/index.html in Chrome)"
+        }
+      ]
+    },
+    {
+      "id": "mspathfindert_1",
+      "type": "mspathfindert",
+      "position": {
+        "x": 800,
+        "y": 200
+      },
+      "data": {
+        "label": "MSPathFinderT"
+      },
+      "nodeConfig": {
+        "toolId": "mspathfindert",
+        "paramValues": {
+          "search_mode": "1",
+          "tda": "1",
+          "precursor_tolerance": "10",
+          "fragment_tolerance": "10",
+          "min_length": "21",
+          "max_length": "300",
+          "min_charge": "2",
+          "max_charge": "30",
+          "min_frag_charge": "1",
+          "max_frag_charge": "15",
+          "min_mass": "3000",
+          "max_mass": "50000",
+          "threads": "0"
+        }
+      },
+      "inputs": [
+        {
+          "id": "spec_file",
+          "name": "Spectrum File",
+          "dataType": "pbf",
+          "required": true
+        },
+        {
+          "id": "database_file",
+          "name": "Database File",
+          "dataType": "fasta",
+          "required": true
+        },
+        {
+          "id": "feature_file",
+          "name": "Feature File",
+          "dataType": "ms1ft",
+          "required": false
+        }
+      ],
+      "outputs": [
+        {
+          "id": "ict_tda",
+          "name": "TDA Results",
+          "dataType": "tsv"
+        },
+        {
+          "id": "mzid",
+          "name": "MZIdentML",
+          "dataType": "mzid"
+        },
+        {
+          "id": "param",
+          "name": "Parameter File",
+          "dataType": "param"
+        }
+      ]
+    },
+    {
+      "id": "featuremap_1",
+      "type": "featuremap_viewer",
+      "executionMode": "interactive",
+      "position": {
+        "x": 1060,
+        "y": 200
+      },
+      "data": {
+        "label": "ProMex FeatureMap Viewer"
+      },
+      "nodeConfig": {
+        "toolId": "featuremap_viewer",
+        "paramValues": {}
+      },
+      "inputs": [
+        {
+          "id": "promex_feature",
+          "name": "ProMex Feature Data",
+          "dataType": "ms1ft",
+          "required": true,
+          "description": "ProMex MS1 feature output (.ms1ft)"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "selection_out",
+          "name": "Selection Output",
+          "dataType": "selection",
+          "required": false,
+          "portKind": "state-out",
+          "semanticType": "state/selection_ids"
+        }
+      ]
+    },
+    {
+      "id": "featuremap_2",
+      "type": "featuremap_viewer",
+      "executionMode": "interactive",
+      "position": {
+        "x": 1060,
+        "y": 80
+      },
+      "data": {
+        "label": "TopFD FeatureMap Viewer"
+      },
+      "nodeConfig": {
+        "toolId": "featuremap_viewer",
+        "paramValues": {}
+      },
+      "inputs": [
+        {
+          "id": "topfd_feature",
+          "name": "TopFD Feature Data",
+          "dataType": "ms1feature",
+          "required": true,
+          "description": "TopFD MS1 feature output (.ms1.feature)"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "selection_out",
+          "name": "Selection Output",
+          "dataType": "selection",
+          "required": false,
+          "portKind": "state-out",
+          "semanticType": "state/selection_ids"
+        }
+      ]
+    },
+    {
+      "id": "spectrum_1",
+      "type": "spectrum_viewer",
+      "executionMode": "interactive",
+      "position": {
+        "x": 1300,
+        "y": 200
+      },
+      "data": {
+        "label": "ProMex Spectrum Viewer"
+      },
+      "nodeConfig": {
+        "toolId": "spectrum_viewer",
+        "paramValues": {}
+      },
+      "inputs": [
+        {
+          "id": "ms1feature_file",
+          "name": "MS1 Feature File",
+          "dataType": "ms1ft",
+          "required": true,
+          "description": "ProMex MS1 feature output (.ms1ft)"
+        },
+        {
+          "id": "selection_in",
+          "name": "Selection In",
+          "dataType": "selection",
+          "required": false,
+          "description": "Optional feature selection propagated from upstream interactive viewers",
+          "portKind": "state-in",
+          "semanticType": "state/selection_ids"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "selection",
+          "name": "Selection",
+          "dataType": "selection",
+          "required": false,
+          "portKind": "state-out",
+          "semanticType": "state/selection_ids"
+        }
+      ]
+    },
+    {
+      "id": "spectrum_2",
+      "type": "spectrum_viewer",
+      "executionMode": "interactive",
+      "position": {
+        "x": 1300,
+        "y": 80
+      },
+      "data": {
+        "label": "TopFD Spectrum Viewer"
+      },
+      "nodeConfig": {
+        "toolId": "spectrum_viewer",
+        "paramValues": {}
+      },
+      "inputs": [
+        {
+          "id": "ms1feature_file",
+          "name": "MS1 Feature File",
+          "dataType": "ms1feature",
+          "required": true,
+          "description": "TopFD MS1 feature output (.ms1.feature)"
+        },
+        {
+          "id": "selection_in",
+          "name": "Selection In",
+          "dataType": "selection",
+          "required": false,
+          "description": "Optional feature selection propagated from upstream interactive viewers",
+          "portKind": "state-in",
+          "semanticType": "state/selection_ids"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "selection",
+          "name": "Selection",
+          "dataType": "selection",
+          "required": false,
+          "portKind": "state-out",
+          "semanticType": "state/selection_ids"
+        }
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "id": "e_data_msconvert",
+      "source": "data_loader_1",
+      "target": "msconvert_1",
+      "sourceHandle": "output-mzml",
+      "targetHandle": "input-input_files",
+      "connectionKind": "data"
+    },
+    {
+      "id": "e_data_pbfgen",
+      "source": "data_loader_1",
+      "target": "pbfgen_1",
+      "sourceHandle": "output-mzml",
+      "targetHandle": "input-input_file",
+      "connectionKind": "data"
+    },
+    {
+      "id": "e_msconvert_topfd",
+      "source": "msconvert_1",
+      "target": "topfd_1",
+      "sourceHandle": "output-mzml",
+      "targetHandle": "input-input_files",
+      "connectionKind": "data"
+    },
+    {
+      "id": "e_pbfgen_promex",
+      "source": "pbfgen_1",
+      "target": "promex_1",
+      "sourceHandle": "output-pbf",
+      "targetHandle": "input-input_file",
+      "connectionKind": "data"
+    },
+    {
+      "id": "e_topfd_toppic",
+      "source": "topfd_1",
+      "target": "toppic_1",
+      "sourceHandle": "output-ms2_msalign",
+      "targetHandle": "input-msalign_files",
+      "connectionKind": "data"
+    },
+    {
+      "id": "e_promex_mspathfinder",
+      "source": "promex_1",
+      "target": "mspathfindert_1",
+      "sourceHandle": "output-ms1ft",
+      "targetHandle": "input-feature_file",
+      "connectionKind": "data"
+    },
+    {
+      "id": "e_fasta_toppic",
+      "source": "fasta_loader_1",
+      "target": "toppic_1",
+      "sourceHandle": "output-fasta",
+      "targetHandle": "input-fasta_file",
+      "connectionKind": "data"
+    },
+    {
+      "id": "e_fasta_mspathfinder",
+      "source": "fasta_loader_1",
+      "target": "mspathfindert_1",
+      "sourceHandle": "output-fasta",
+      "targetHandle": "input-database_file",
+      "connectionKind": "data"
+    },
+    {
+      "id": "e_pbfgen_mspathfinder",
+      "source": "pbfgen_1",
+      "target": "mspathfindert_1",
+      "sourceHandle": "output-pbf",
+      "targetHandle": "input-spec_file",
+      "connectionKind": "data"
+    },
+    {
+      "id": "e_topfd_featuremap2",
+      "source": "topfd_1",
+      "target": "featuremap_2",
+      "sourceHandle": "output-ms1feature",
+      "targetHandle": "input-topfd_feature",
+      "connectionKind": "data"
+    },
+    {
+      "id": "e_promex_featuremap1",
+      "source": "promex_1",
+      "target": "featuremap_1",
+      "sourceHandle": "output-ms1ft",
+      "targetHandle": "input-promex_feature",
+      "connectionKind": "data"
+    },
+    {
+      "id": "e_promex_spectrum",
+      "source": "promex_1",
+      "target": "spectrum_1",
+      "sourceHandle": "output-ms1ft",
+      "targetHandle": "input-ms1feature_file",
+      "connectionKind": "data"
+    },
+    {
+      "id": "e_featuremap1_spectrum1_selection",
+      "source": "featuremap_1",
+      "target": "spectrum_1",
+      "sourceHandle": "output-selection_out",
+      "targetHandle": "input-selection_in",
+      "connectionKind": "state",
+      "semanticType": "state/selection_ids"
+    },
+    {
+      "id": "e_topfd_spectrum2",
+      "source": "topfd_1",
+      "target": "spectrum_2",
+      "sourceHandle": "output-ms1feature",
+      "targetHandle": "input-ms1feature_file",
+      "connectionKind": "data"
+    },
+    {
+      "id": "e_featuremap2_spectrum2_selection",
+      "source": "featuremap_2",
+      "target": "spectrum_2",
+      "sourceHandle": "output-selection_out",
+      "targetHandle": "input-selection_in",
+      "connectionKind": "state",
+      "semanticType": "state/selection_ids"
+    }
+  ],
+  "connections": [],
+  "projectSettings": {}
+}
