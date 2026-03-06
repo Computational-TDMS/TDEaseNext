@@ -142,11 +142,54 @@ export interface WorkflowJSON {
 import { ref, computed } from 'vue'
 import { useStateBusStore } from '@/stores/state-bus'
 
+function inferConnectionKind(
+  connection: ConnectionDefinition,
+  nodes: NodeDefinition[]
+): 'data' | 'state' {
+  const sourceNode = nodes.find((node) => node.id === connection.source.nodeId)
+  const targetNode = nodes.find((node) => node.id === connection.target.nodeId)
+  const sourcePort = sourceNode?.outputs.find((port) => port.id === connection.source.portId)
+  const targetPort = targetNode?.inputs.find((port) => port.id === connection.target.portId)
+  const sourceKind = sourcePort?.portKind ?? 'data'
+  const targetKind = targetPort?.portKind ?? 'data'
+  if (sourceKind === 'state-out' && targetKind === 'state-in') {
+    return 'state'
+  }
+  if (connection.connectionKind === 'data' || connection.connectionKind === 'state') {
+    return connection.connectionKind
+  }
+  return 'data'
+}
+
+function normalizeConnections(
+  connections: ConnectionDefinition[],
+  nodes: NodeDefinition[]
+): ConnectionDefinition[] {
+  return connections.map((connection) => {
+    const sourceNode = nodes.find((node) => node.id === connection.source.nodeId)
+    const targetNode = nodes.find((node) => node.id === connection.target.nodeId)
+    const sourcePort = sourceNode?.outputs.find((port) => port.id === connection.source.portId)
+    const targetPort = targetNode?.inputs.find((port) => port.id === connection.target.portId)
+    const connectionKind = inferConnectionKind(connection, nodes)
+    const semanticType =
+      connectionKind === 'state'
+        ? connection.semanticType || sourcePort?.semanticType || targetPort?.semanticType
+        : undefined
+
+    return {
+      ...connection,
+      connectionKind,
+      semanticType,
+    }
+  })
+}
+
 export const useWorkflowStore = defineStore('workflow', () => {
   // Current workflow state
   const currentWorkflow = ref<WorkflowJSON | null>(null)
   const selectedNodeId = ref<string | null>(null)
   const isLoading = ref<boolean>(false)
+  const currentExecutionId = ref<string | null>(null)
 
   // Node management
   const nodes = ref<NodeDefinition[]>([])
@@ -200,7 +243,7 @@ export const useWorkflowStore = defineStore('workflow', () => {
     console.log('[workflowStore.loadWorkflow] Connections:', workflow.connections)
     currentWorkflow.value = workflow
     nodes.value = workflow.nodes
-    connections.value = workflow.connections
+    connections.value = normalizeConnections(workflow.connections || [], workflow.nodes || [])
     const stateBus = useStateBusStore()
     stateBus.setConnections(connections.value)
     console.log('[workflowStore.loadWorkflow] After load, connections.value:', connections.value)
@@ -333,12 +376,18 @@ export const useWorkflowStore = defineStore('workflow', () => {
     updateNode(nodeId, { position })
   }
 
+  const setCurrentExecutionId = (executionId: string | null) => {
+    currentExecutionId.value = executionId
+  }
+
   // 撤销操作
   const undo = () => {
     const previousState = historyManager.undo()
     if (previousState) {
       nodes.value = [...previousState.nodes]
       connections.value = [...previousState.connections]
+      const stateBus = useStateBusStore()
+      stateBus.setConnections(connections.value)
       return true
     }
     return false
@@ -350,6 +399,8 @@ export const useWorkflowStore = defineStore('workflow', () => {
     if (nextState) {
       nodes.value = [...nextState.nodes]
       connections.value = [...nextState.connections]
+      const stateBus = useStateBusStore()
+      stateBus.setConnections(connections.value)
       return true
     }
     return false
@@ -360,6 +411,7 @@ export const useWorkflowStore = defineStore('workflow', () => {
     currentWorkflow,
     selectedNodeId,
     isLoading,
+    currentExecutionId,
     nodes,
     connections,
 
@@ -377,6 +429,7 @@ export const useWorkflowStore = defineStore('workflow', () => {
     deleteConnection,
     selectNode,
     moveNode,
+    setCurrentExecutionId,
 
     // 历史记录管理
     historyManager: {

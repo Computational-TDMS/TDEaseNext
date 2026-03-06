@@ -14,6 +14,8 @@ type RawEdge = {
   sourceHandle?: string
   targetHandle?: string
   dataPath?: { s?: string; t?: string }
+  connectionKind?: 'data' | 'state'
+  semanticType?: string
 }
 
 type RawWorkflow = {
@@ -21,6 +23,19 @@ type RawWorkflow = {
   edges: RawEdge[]
   metadata?: any
   projectSettings?: Record<string, unknown>
+}
+
+function inferConnectionKind(
+  declaredKind: 'data' | 'state' | undefined,
+  sourcePort: any,
+  targetPort: any
+): 'data' | 'state' {
+  const sourceKind = sourcePort?.portKind || 'data'
+  const targetKind = targetPort?.portKind || 'data'
+  if (sourceKind === 'state-out' && targetKind === 'state-in') {
+    return 'state'
+  }
+  return declaredKind || 'data'
 }
 
 export function importRawWorkflow(raw: RawWorkflow, registryPreloaded?: Record<string, any>): WorkflowJSON {
@@ -168,7 +183,7 @@ export function importRawWorkflow(raw: RawWorkflow, registryPreloaded?: Record<s
     }
   })
 
-  const connections: ConnectionDefinition[] = raw.edges.map((e) => {
+  const connectionsRaw: ConnectionDefinition[] = raw.edges.map((e) => {
     const sPortRaw = normalizeHandle(e.sourceHandle) || 'output'
     const tPortRaw = normalizeHandle(e.targetHandle) || 'input'
     const sPort = sPortRaw.split('__')[0]
@@ -179,7 +194,31 @@ export function importRawWorkflow(raw: RawWorkflow, registryPreloaded?: Record<s
       id: e.id,
       source: { nodeId: e.source, portId: sPort },
       target: { nodeId: e.target, portId: tPort },
-      dataPath: e.dataPath || { s: sSuffix, t: tSuffix }
+      dataPath: e.dataPath || { s: sSuffix, t: tSuffix },
+      connectionKind: e.connectionKind,
+      semanticType: e.semanticType,
+    }
+  })
+
+  const connections: ConnectionDefinition[] = connectionsRaw.map((connection) => {
+    const sourceNode = nodes.find((node) => node.id === connection.source.nodeId)
+    const targetNode = nodes.find((node) => node.id === connection.target.nodeId)
+    const sourcePort = sourceNode?.outputs.find((port: any) => port.id === connection.source.portId)
+    const targetPort = targetNode?.inputs.find((port: any) => port.id === connection.target.portId)
+    const inferredKind = inferConnectionKind(
+      connection.connectionKind,
+      sourcePort,
+      targetPort
+    )
+    const semanticType =
+      inferredKind === 'state'
+        ? connection.semanticType || (sourcePort as any)?.semanticType || (targetPort as any)?.semanticType
+        : undefined
+
+    return {
+      ...connection,
+      connectionKind: inferredKind,
+      semanticType,
     }
   })
 

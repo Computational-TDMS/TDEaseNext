@@ -233,13 +233,20 @@ export class WorkflowService {
             params: (n as any).nodeConfig?.paramValues || {}
           }
         })),
-        edges: workflow.connections.map(c => ({
-          id: c.id,
-          source: c.source.nodeId,
-          target: c.target.nodeId,
-          sourceHandle: `output-${c.source.portId}`,
-          targetHandle: `input-${c.target.portId}`
-        })),
+        edges: workflow.connections.map(c => {
+          const sourceSuffix = c.dataPath?.s ? `__${c.dataPath.s}` : ''
+          const targetSuffix = c.dataPath?.t ? `__${c.dataPath.t}` : ''
+          return {
+            id: c.id,
+            source: c.source.nodeId,
+            target: c.target.nodeId,
+            sourceHandle: `output-${c.source.portId}${sourceSuffix}`,
+            targetHandle: `input-${c.target.portId}${targetSuffix}`,
+            dataPath: c.dataPath,
+            connectionKind: c.connectionKind || 'data',
+            semanticType: c.semanticType
+          }
+        }),
         projectSettings: workflow.projectSettings || {}
       }
       const payload = {
@@ -306,13 +313,20 @@ export class WorkflowService {
             params: (n as any).nodeConfig?.paramValues || {}
           }
         })),
-        edges: workflow.connections.map(c => ({
-          id: c.id,
-          source: c.source.nodeId,
-          target: c.target.nodeId,
-          sourceHandle: `output-${c.source.portId}`,
-          targetHandle: `input-${c.target.portId}`
-        })),
+        edges: workflow.connections.map(c => {
+          const sourceSuffix = c.dataPath?.s ? `__${c.dataPath.s}` : ''
+          const targetSuffix = c.dataPath?.t ? `__${c.dataPath.t}` : ''
+          return {
+            id: c.id,
+            source: c.source.nodeId,
+            target: c.target.nodeId,
+            sourceHandle: `output-${c.source.portId}${sourceSuffix}`,
+            targetHandle: `input-${c.target.portId}${targetSuffix}`,
+            dataPath: c.dataPath,
+            connectionKind: c.connectionKind || 'data',
+            semanticType: c.semanticType
+          }
+        }),
         projectSettings: workflow.projectSettings || {}
       }
       const payload = {

@@ -13,7 +13,6 @@ from fastapi.responses import JSONResponse
 
 from app.dependencies import get_database
 from app.services.node_data_service import parse_tabular_file, resolve_node_outputs
-from app.services.tool_registry import get_tool_registry
 from app.services.node_data_cache import get_node_data_cache
 
 logger = logging.getLogger(__name__)
@@ -96,66 +95,27 @@ async def get_node_data_schema(
         # 1. Get node outputs
         outputs_info = _resolve_outputs_or_http(execution_id, node_id, db)
 
-        # 2. Get tool definition to extract schema
-        cursor = db.cursor()
-        cursor.execute(
-            "SELECT workflow_snapshot FROM executions WHERE id = ?",
-            (execution_id,)
-        )
-        row = cursor.fetchone()
-        if not row:
+        # 2. Resolve output selection for requested port
+        if port_id:
+            outputs = [o for o in outputs_info["outputs"] if o["port_id"] == port_id]
+        else:
+            outputs = outputs_info["outputs"]
+
+        if not outputs:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Execution not found: {execution_id}"
+                detail=f"No outputs found for node: {node_id}"
             )
 
-        import json
-        workflow_snapshot = json.loads(row[0])
-        nodes = workflow_snapshot.get("nodes", [])
-        node_data = None
-        for node in nodes:
-            if node.get("id") == node_id:
-                node_data = node
-                break
+        output = outputs[0]
+        schema = output.get("schema") or []
 
-        if not node_data:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Node not found: {node_id}"
-            )
-
-        tool_id = node_data.get("type", "")
-        tool_registry = get_tool_registry()
-        tool_info = tool_registry.get(tool_id)
-
-        if not tool_info:
-            # Fallback: infer schema from file
-            if port_id:
-                outputs = [o for o in outputs_info["outputs"] if o["port_id"] == port_id]
-            else:
-                outputs = outputs_info["outputs"]
-
-            if not outputs:
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail=f"No outputs found for node: {node_id}"
-                )
-
-            # Parse first output to infer schema
-            output = outputs[0]
-            if not output["exists"] or not output["parseable"]:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=f"Output file not available or not parseable: {output['file_name']}"
-                )
-
+        # 3. Fallback: infer schema from file when tool schema is unavailable
+        if not schema and output.get("exists") and output.get("parseable"):
             file_path = Path(output["file_path"])
             table_data = parse_tabular_file(file_path, max_rows=1)
-
-            # Infer schema from column names and first row
-            schema = []
+            inferred_schema = []
             for col_name in table_data["columns"]:
-                # Try to infer type from first row value
                 col_type = "string"
                 if table_data["rows"]:
                     value = table_data["rows"][0].get(col_name, "")
@@ -164,49 +124,18 @@ async def get_node_data_schema(
                         col_type = "number"
                     except (ValueError, TypeError):
                         pass
-
-                schema.append({
+                inferred_schema.append({
                     "name": col_name,
                     "type": col_type,
                     "description": f"Column '{col_name}'",
                     "optional": True
                 })
-
-            result = {
-                "execution_id": execution_id,
-                "node_id": node_id,
-                "port_id": port_id or outputs[0]["port_id"],
-                "schema": schema
-            }
-            # Store in cache
-            cache.set(execution_id, node_id, result, cache_key)
-            return JSONResponse(
-                status_code=status.HTTP_200_OK,
-                content=result
-            )
-
-        # 3. Extract schema from tool definition
-        ports = tool_info.get("ports", {}).get("outputs", [])
-        if port_id:
-            ports = [p for p in ports if p.get("id") == port_id or p.get("handle") == port_id]
-
-        if not ports:
-            # Use first output if no specific port requested
-            ports = tool_info.get("ports", {}).get("outputs", [])
-
-        if not ports:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"No output ports found for tool: {tool_id}"
-            )
-
-        port = ports[0]
-        schema = port.get("schema", [])
+            schema = inferred_schema
 
         result = {
             "execution_id": execution_id,
             "node_id": node_id,
-            "port_id": port_id or port.get("id", ""),
+            "port_id": output.get("port_id", port_id or ""),
             "schema": schema
         }
         # Store in cache

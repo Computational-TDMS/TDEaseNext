@@ -98,9 +98,7 @@ function getHeatmapData(): { name: string; value: [string, string, number | null
 
   const data = props.data.rows.map((row, index) => {
     const rowLabel = String(row[config.value.rowColumn] || `Row${index}`)
-    const colLabel = props.config?.columnColumn
-      ? String(row[props.config.columnColumn] || `Col${index}`)
-      : `Col${index}`
+    const colLabel = String(row[config.value.columnColumn] || `Col${index}`)
     const cellValue = row[config.value.valueColumn]
 
     let numericValue: number | null = null
@@ -113,7 +111,8 @@ function getHeatmapData(): { name: string; value: [string, string, number | null
 
     return {
       name: `${rowLabel}-${colLabel}`,
-      value: [rowLabel, colLabel, numericValue] as [string, string, number | null],
+      // ECharts heatmap data uses [x, y, value] => [column, row, value]
+      value: [colLabel, rowLabel, numericValue] as [string, string, number | null],
     }
   })
 
@@ -128,9 +127,7 @@ function getAxisLabels() {
 
   props.data?.rows.forEach(row => {
     const rowLabel = String(row[config.value.rowColumn] || '')
-    const colLabel = props.config?.columnColumn
-      ? String(row[props.config.columnColumn] || '')
-      : ''
+    const colLabel = String(row[config.value.columnColumn] || '')
     if (rowLabel) rows.add(rowLabel)
     if (colLabel) columns.add(colLabel)
   })
@@ -170,9 +167,8 @@ function getValueRange() {
 function updateChart() {
   if (!baseViewer.value) return
 
-  const chartInstance = baseViewer.value.chart
-  if (!chartInstance) return
-  // Already handled above
+  const chart = baseViewer.value.chart
+  if (!chart) return
 
   const heatmapData = getHeatmapData()
   const { rows, columns } = getAxisLabels()
@@ -180,9 +176,7 @@ function updateChart() {
   const colors = getColorList()
 
   if (heatmapData.length === 0) {
-    if (baseViewer.value?.chart) {
-      baseViewer.value.chart.clear()
-    }
+    chart.clear()
     return
   }
   const option: EChartsOption = {
@@ -269,7 +263,7 @@ function onChartReady(chart: any) {
   // Handle cell click for selection
   chart.on('click', (params: any) => {
     if (params.data) {
-      const [row, col] = params.data.value
+      const [col, row] = params.data.value
       const cellKey = `${row}-${col}`
 
       const existingIdx = selectedCells.value.findIndex(

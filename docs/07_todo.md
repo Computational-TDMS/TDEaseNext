@@ -1,7 +1,10 @@
 # Section 7: 待办事项 (TODO)
 
-> [!NOTE]
-> 本文档保留原始 `TODO.md` 的所有内容，仅作为文档体系的一部分进行逻辑归类。
+## 小巧思
+1. 前端优化可以添加基于日志输出的进度条
+2. 之后可以用户实现硬件控制吗? 
+
+
 
 # TDEase 开发路线图
 
@@ -55,8 +58,8 @@ data_loader → msconvert → topfd → toppic → promex
 **状态**: 进行中
 
 - [ ] InteractiveNode.vue - handleExport 类型不匹配
-- [ ] FeatureMapViewer.vue - EChartsType 使用问题
-- [ ] ScatterPlotViewer.vue - EChartsType 使用问题
+- [x] FeatureMapViewer.vue - feature trace（start→end, y=mass）绘制 + 类型问题修复
+- [x] ScatterPlotViewer.vue - EChartsType 使用问题修复
 - [ ] 清理未使用的变量和导入
 
 **预期结果**: 编译零错误

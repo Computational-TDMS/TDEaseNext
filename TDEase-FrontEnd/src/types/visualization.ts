@@ -133,6 +133,26 @@ export interface VolcanoConfig {
 }
 
 /**
+ * Feature map specific configuration
+ *
+ * 每个 feature 使用 start/end time + mass + intensity 绘制一条横向 trace。
+ */
+export interface FeatureMapConfig {
+  axisMapping: {
+    startTime: string
+    endTime: string
+    mass: string
+    intensity?: string
+  }
+  colorScheme: ColorSchemeId
+  opacity: number
+  /**
+   * 最大渲染的 feature 条数，超过后按行号等间距采样。
+   */
+  maxTraces: number
+}
+
+/**
  * Heatmap specific configuration
  */
 export interface HeatmapConfig {
@@ -274,7 +294,15 @@ export interface ExportConfig {
  */
 export interface VisualizationConfig {
   type: VisualizationType
-  config?: ScatterConfig | HeatmapConfig | VolcanoConfig | SpectrumConfig | TableViewerConfig | HtmlViewerConfig | Record<string, unknown>
+  config?:
+    | ScatterConfig
+    | HeatmapConfig
+    | VolcanoConfig
+    | SpectrumConfig
+    | FeatureMapConfig
+    | TableViewerConfig
+    | HtmlViewerConfig
+    | Record<string, unknown>
 }
 
 /**

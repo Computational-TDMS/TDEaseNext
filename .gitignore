@@ -142,6 +142,7 @@ InformedProteomics_Program/
 *.swo
 *~
 .#*
+tests/fixtures/tmp_pytest/
 
 # Archive files
 *.zip

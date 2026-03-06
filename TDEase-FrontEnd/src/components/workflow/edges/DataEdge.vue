@@ -79,8 +79,8 @@ const label = computed(() => {
 
 // Use labelX and labelY from path utility (center of path), fallback to midpoint
 const labelPosition = computed(() => {
-  if (typeof labelX === 'number' && typeof labelY === 'number') {
-    return { x: labelX, y: labelY - 10 }
+  if (typeof labelX.value === 'number' && typeof labelY.value === 'number') {
+    return { x: labelX.value, y: labelY.value - 10 }
   }
   // Fallback to midpoint if labelX/labelY not available
   return {

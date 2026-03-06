@@ -36,25 +36,80 @@ export const useVisualizationStore = defineStore('visualization', () => {
     return `${nodeId}::${executionId}`
   }
 
+  function findDataEntryByNode(
+    nodeId: string,
+    executionId?: string,
+    portId: string | null = null
+  ): NodeDataEntry | null {
+    if (executionId) {
+      const exact = nodeData.value.get(getDataKey(nodeId, portId, executionId))
+      if (exact) return exact
+    }
+    const withPortPrefix = `${nodeId}:`
+    const withoutPortPrefix = `${nodeId}::`
+    for (const [key, entry] of nodeData.value.entries()) {
+      if (key.startsWith(withPortPrefix) || key.startsWith(withoutPortPrefix)) {
+        return entry
+      }
+    }
+    return null
+  }
+
+  function findLoadingStateByNode(
+    nodeId: string,
+    executionId?: string,
+    portId: string | null = null
+  ): LoadingState | null {
+    if (executionId) {
+      const exact = loadingStates.value.get(getDataKey(nodeId, portId, executionId))
+      if (exact) return exact
+    }
+    const withPortPrefix = `${nodeId}:`
+    const withoutPortPrefix = `${nodeId}::`
+    for (const [key, entry] of loadingStates.value.entries()) {
+      if (key.startsWith(withPortPrefix) || key.startsWith(withoutPortPrefix)) {
+        return entry
+      }
+    }
+    return null
+  }
+
   // Getters
-  const getNodeData = computed(() => (nodeId: string) => {
-    return nodeData.value.get(nodeId)?.data || null
+  const getNodeData = computed(() => (
+    nodeId: string,
+    executionId?: string,
+    portId: string | null = null
+  ) => {
+    return findDataEntryByNode(nodeId, executionId, portId)?.data || null
   })
 
   const getNodeSelection = computed(() => (nodeId: string) => {
     return nodeSelections.value.get(nodeId)?.selection || null
   })
 
-  const getLoadingState = computed(() => (nodeId: string) => {
-    return loadingStates.value.get(nodeId) || { status: 'idle' as const }
+  const getLoadingState = computed(() => (
+    nodeId: string,
+    executionId?: string,
+    portId: string | null = null
+  ) => {
+    return findLoadingStateByNode(nodeId, executionId, portId) || { status: 'idle' as const }
   })
 
-  const isNodeLoading = computed(() => (nodeId: string) => {
-    return loadingStates.value.get(nodeId)?.status === 'loading'
+  const isNodeLoading = computed(() => (
+    nodeId: string,
+    executionId?: string,
+    portId: string | null = null
+  ) => {
+    return findLoadingStateByNode(nodeId, executionId, portId)?.status === 'loading'
   })
 
-  const hasNodeData = computed(() => (nodeId: string) => {
-    return nodeData.value.has(nodeId) && nodeData.value.get(nodeId)?.data !== null
+  const hasNodeData = computed(() => (
+    nodeId: string,
+    executionId?: string,
+    portId: string | null = null
+  ) => {
+    const entry = findDataEntryByNode(nodeId, executionId, portId)
+    return !!entry && entry.data !== null
   })
 
   // Actions
@@ -86,16 +141,18 @@ export const useVisualizationStore = defineStore('visualization', () => {
     }
 
     const actualNodeId = upstreamNodeId || nodeId
-    const dataKey = getDataKey(nodeId, portId, executionId)
+    const dataAddressNodeId = actualNodeId
+    const dataKey = getDataKey(dataAddressNodeId, portId, executionId)
 
     console.log(`[VisualizationStore] Loading node data:`, {
-      nodeId,
-      executionId,
-      portId,
-      upstreamNodeId,
-      actualNodeId,
-      dataKey
-    })
+        nodeId,
+        executionId,
+        portId,
+        upstreamNodeId,
+        actualNodeId,
+        dataAddressNodeId,
+        dataKey
+      })
 
     // Set loading state
     loadingStates.value.set(dataKey, { status: 'loading' })
@@ -145,7 +202,7 @@ export const useVisualizationStore = defineStore('visualization', () => {
         const message = allMissing
           ? '输出文件未找到，请运行工作流生成数据'
           : 'No parseable data available'
-        console.warn(`[VisualizationStore] No parseable data found for node ${nodeId}`)
+        console.warn(`[VisualizationStore] No parseable data found for node ${dataAddressNodeId}`)
         console.warn(`[VisualizationStore] Has outputs: ${hasOutputs}, All missing: ${allMissing}`)
         loadingStates.value.set(dataKey, {
           status: allMissing ? 'pending' : 'error',
@@ -209,7 +266,7 @@ export const useVisualizationStore = defineStore('visualization', () => {
       }
 
       // For other errors, log and set error state
-      console.error(`[VisualizationStore] Failed to load data for node ${nodeId}:`, error)
+      console.error(`[VisualizationStore] Failed to load data for node ${dataAddressNodeId}:`, error)
       const errorMsg = error instanceof Error ? error.message : 'Unknown error'
 
       loadingStates.value.set(dataKey, {
@@ -232,19 +289,23 @@ export const useVisualizationStore = defineStore('visualization', () => {
    * @param nodeId - Node identifier
    * @param selection - Selection state
    */
-  function updateSelection(nodeId: string, selection: SelectionState) {
+  function updateSelection(
+    nodeId: string,
+    selection: SelectionState,
+    outputPortId: string = 'selection_out'
+  ) {
     nodeSelections.value.set(nodeId, {
       selection,
       timestamp: Date.now(),
     })
 
     const stateBus = useStateBusStore()
-    stateBus.dispatch(nodeId, 'selection_out', {
+    stateBus.dispatch(nodeId, outputPortId, {
       semanticType: 'state/selection_ids',
       data: selection,
       timestamp: Date.now(),
       sourceNodeId: nodeId,
-      portId: 'selection_out',
+      portId: outputPortId,
     })
   }
 
@@ -308,7 +369,7 @@ export const useVisualizationStore = defineStore('visualization', () => {
    * @returns Filtered rows
    */
   function getFilteredRows(nodeId: string): Record<string, unknown>[] {
-    const dataEntry = nodeData.value.get(nodeId)
+    const dataEntry = findDataEntryByNode(nodeId)
     if (!dataEntry?.data) return []
 
     const selectionEntry = nodeSelections.value.get(nodeId)
@@ -376,17 +437,33 @@ export const useVisualizationStore = defineStore('visualization', () => {
    * @param nodeId - Node identifier
    */
   function removeNode(nodeId: string) {
-    nodeData.value.delete(nodeId)
+    const withPortPrefix = `${nodeId}:`
+    const withoutPortPrefix = `${nodeId}::`
+    for (const key of nodeData.value.keys()) {
+      if (key.startsWith(withPortPrefix) || key.startsWith(withoutPortPrefix)) {
+        nodeData.value.delete(key)
+      }
+    }
     nodeSelections.value.delete(nodeId)
-    loadingStates.value.delete(nodeId)
+    for (const key of loadingStates.value.keys()) {
+      if (key.startsWith(withPortPrefix) || key.startsWith(withoutPortPrefix)) {
+        loadingStates.value.delete(key)
+      }
+    }
   }
 
-  function setNodeData(nodeId: string, data: TableData | null) {
-    nodeData.value.set(nodeId, {
+  function setNodeData(
+    nodeId: string,
+    data: TableData | null,
+    executionId: string = 'local',
+    portId: string | null = null
+  ) {
+    const dataKey = getDataKey(nodeId, portId, executionId)
+    nodeData.value.set(dataKey, {
       data,
       loadingState: { status: data ? 'success' : 'idle' }
     })
-    loadingStates.value.set(nodeId, { status: data ? 'success' : 'idle' })
+    loadingStates.value.set(dataKey, { status: data ? 'success' : 'idle' })
   }
 
   return {

@@ -5,9 +5,9 @@
       <el-divider content-position="left">Axis Mapping</el-divider>
       
       <el-row :gutter="12">
-        <el-col :span="8">
-          <el-form-item label="X Axis">
-            <el-select v-model="localMapping.x" placeholder="Select column" clearable @change="emitChange">
+        <el-col v-if="showX" :span="8">
+          <el-form-item :label="xLabel">
+            <el-select v-model="localMapping.x" :placeholder="xPlaceholder" clearable @change="emitChange">
               <el-option v-for="col in columns" :key="col.id" :label="col.name" :value="col.id">
                 <span>{{ col.name }}</span>
                 <el-tag v-if="col.type === 'number'" size="small" type="success" style="margin-left: 4px">num</el-tag>
@@ -15,9 +15,9 @@
             </el-select>
           </el-form-item>
         </el-col>
-        <el-col :span="8">
-          <el-form-item label="Y Axis">
-            <el-select v-model="localMapping.y" placeholder="Select column" clearable @change="emitChange">
+        <el-col v-if="showY" :span="8">
+          <el-form-item :label="yLabel">
+            <el-select v-model="localMapping.y" :placeholder="yPlaceholder" clearable @change="emitChange">
               <el-option v-for="col in columns" :key="col.id" :label="col.name" :value="col.id">
                 <span>{{ col.name }}</span>
                 <el-tag v-if="col.type === 'number'" size="small" type="success" style="margin-left: 4px">num</el-tag>
@@ -25,9 +25,9 @@
             </el-select>
           </el-form-item>
         </el-col>
-        <el-col :span="8">
-          <el-form-item label="Z Axis (3D)">
-            <el-select v-model="localMapping.z" placeholder="Select column" clearable @change="emitChange">
+        <el-col v-if="showZ" :span="8">
+          <el-form-item :label="zLabel">
+            <el-select v-model="localMapping.z" :placeholder="zPlaceholder" clearable @change="emitChange">
               <el-option v-for="col in columns" :key="col.id" :label="col.name" :value="col.id">
                 <span>{{ col.name }}</span>
                 <el-tag v-if="col.type === 'number'" size="small" type="success" style="margin-left: 4px">num</el-tag>
@@ -41,8 +41,8 @@
       <el-divider content-position="left">Visual Mapping</el-divider>
       
       <el-row :gutter="12">
-        <el-col :span="12">
-          <el-form-item label="Color By">
+        <el-col v-if="showColor" :span="12">
+          <el-form-item :label="colorLabel">
             <el-select v-model="localMapping.color" placeholder="None" clearable @change="emitChange">
               <el-option v-for="col in columns" :key="col.id" :label="col.name" :value="col.id">
                 <span>{{ col.name }}</span>
@@ -52,8 +52,8 @@
             </el-select>
           </el-form-item>
         </el-col>
-        <el-col :span="12">
-          <el-form-item label="Size By">
+        <el-col v-if="showSize" :span="12">
+          <el-form-item :label="sizeLabel">
             <el-select v-model="localMapping.size" placeholder="None" clearable @change="emitChange">
               <el-option v-for="col in numericColumns" :key="col.id" :label="col.name" :value="col.id" />
             </el-select>
@@ -78,10 +78,12 @@
 import { computed, watch, reactive } from 'vue'
 import { MagicStick } from '@element-plus/icons-vue'
 import type { AxisMapping, ColumnDef } from '@/types/visualization'
+import type { VisualizationMappingSpec } from '@/services/visualization/mappingSpecs'
 
 interface Props {
   modelValue?: AxisMapping
   columns: ColumnDef[]
+  mappingSpec?: VisualizationMappingSpec
 }
 
 const props = defineProps<Props>()
@@ -106,6 +108,39 @@ watch(() => props.modelValue, (newVal) => {
 
 // Computed
 const numericColumns = computed(() => props.columns.filter(c => c.type === 'number'))
+
+const showX = computed(() => {
+  return !props.mappingSpec || props.mappingSpec.fields.some(f => f.axisKey === 'x')
+})
+const showY = computed(() => {
+  return !props.mappingSpec || props.mappingSpec.fields.some(f => f.axisKey === 'y')
+})
+const showZ = computed(() => {
+  return !props.mappingSpec || props.mappingSpec.fields.some(f => f.axisKey === 'z')
+})
+const showColor = computed(() => {
+  return !props.mappingSpec || props.mappingSpec.fields.some(f => f.axisKey === 'color')
+})
+const showSize = computed(() => {
+  return !props.mappingSpec || props.mappingSpec.fields.some(f => f.axisKey === 'size')
+})
+
+function labelFor(axis: keyof AxisMapping, fallback: string): string {
+  const spec = props.mappingSpec
+  if (!spec) return fallback
+  const field = spec.fields.find(f => f.axisKey === axis)
+  return field?.label || fallback
+}
+
+const xLabel = computed(() => labelFor('x', 'X Axis'))
+const yLabel = computed(() => labelFor('y', 'Y Axis'))
+const zLabel = computed(() => labelFor('z', 'Z Axis (3D)'))
+const colorLabel = computed(() => labelFor('color', 'Color By'))
+const sizeLabel = computed(() => labelFor('size', 'Size By'))
+
+const xPlaceholder = computed(() => (showX.value ? 'Select column' : ''))
+const yPlaceholder = computed(() => (showY.value ? 'Select column' : ''))
+const zPlaceholder = computed(() => (showZ.value ? 'Select column' : ''))
 
 // Validation warnings
 const validationWarnings = computed(() => {

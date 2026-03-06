@@ -12,6 +12,9 @@
         <el-tag v-if="data?.totalRows" type="info" size="small">
           {{ data.totalRows }} features
         </el-tag>
+        <el-tag v-if="selectedFeatures > 0" type="success" size="small">
+          {{ selectedFeatures }} selected
+        </el-tag>
         <el-tag v-if="samplingApplied" type="warning" size="small">
           Sampled: {{ renderedPoints }} / {{ originalPoints }}
         </el-tag>
@@ -27,24 +30,45 @@
     <template #config>
       <el-row :gutter="12">
         <el-col :span="8">
-          <el-form-item label="RT Axis">
-            <el-select v-model="localConfig.axisMapping.rt" placeholder="Select" size="small" clearable @change="updateConfig">
+          <el-form-item label="Start Time">
+            <el-select v-model="localConfig.axisMapping.startTime" placeholder="Select" size="small" clearable @change="updateConfig">
               <el-option v-for="col in numericColumns" :key="col.id" :label="col.name" :value="col.id" />
             </el-select>
           </el-form-item>
         </el-col>
         <el-col :span="8">
-          <el-form-item label="m/z Axis">
-            <el-select v-model="localConfig.axisMapping.mz" placeholder="Select" size="small" clearable @change="updateConfig">
+          <el-form-item label="End Time">
+            <el-select v-model="localConfig.axisMapping.endTime" placeholder="Select" size="small" clearable @change="updateConfig">
               <el-option v-for="col in numericColumns" :key="col.id" :label="col.name" :value="col.id" />
             </el-select>
           </el-form-item>
         </el-col>
         <el-col :span="8">
-          <el-form-item label="Intensity">
-            <el-select v-model="localConfig.axisMapping.intensity" placeholder="Select" size="small" clearable @change="updateConfig">
+          <el-form-item label="Mass">
+            <el-select v-model="localConfig.axisMapping.mass" placeholder="Select" size="small" clearable @change="updateConfig">
               <el-option v-for="col in numericColumns" :key="col.id" :label="col.name" :value="col.id" />
             </el-select>
+          </el-form-item>
+        </el-col>
+      </el-row>
+      <el-row :gutter="12">
+        <el-col :span="8">
+          <el-form-item label="Intensity (Color)">
+            <el-select v-model="localConfig.axisMapping.intensity" placeholder="Optional" size="small" clearable @change="updateConfig">
+              <el-option v-for="col in numericColumns" :key="col.id" :label="col.name" :value="col.id" />
+            </el-select>
+          </el-form-item>
+        </el-col>
+        <el-col :span="8">
+          <el-form-item label="Max Traces">
+            <el-input-number
+              v-model="localConfig.maxTraces"
+              :min="1000"
+              :max="200000"
+              :step="1000"
+              size="small"
+              @change="updateConfig"
+            />
           </el-form-item>
         </el-col>
       </el-row>
@@ -62,13 +86,14 @@ import BaseEChartsViewer from './BaseEChartsViewer.vue'
 
 interface FeatureMapConfig {
   axisMapping: {
-    rt: string
-    mz: string
+    startTime: string
+    endTime: string
+    mass: string
     intensity?: string
   }
   colorScheme: string
-  pointSize: number
   opacity: number
+  maxTraces: number
 }
 
 interface Props {
@@ -89,12 +114,15 @@ const emit = defineEmits<{
 const baseViewer = ref<InstanceType<typeof BaseEChartsViewer>>()
 const loading = ref(false)
 const renderedPoints = ref(0)
+const selectedFeatures = ref(0)
+const isSyncingExternalSelection = ref(false)
+const hasRenderedOnce = ref(false)
 
 const localConfig = ref<FeatureMapConfig>({
-  axisMapping: { rt: '', mz: '', intensity: '' },
+  axisMapping: { startTime: '', endTime: '', mass: '', intensity: '' },
   colorScheme: 'viridis',
-  pointSize: 8,
   opacity: 0.7,
+  maxTraces: 10000,
 })
 
 watch(() => props.config, (newConfig) => {
@@ -103,23 +131,105 @@ watch(() => props.config, (newConfig) => {
 
 const colorSchemes = COLOR_SCHEMES
 const originalPoints = computed(() => props.data?.rows.length || 0)
-const samplingApplied = computed(() => renderedPoints.value < originalPoints.value)
-const numericColumns = computed(() => props.data?.columns.filter(c => c.type === 'number') || [])
+const samplingApplied = computed(() => {
+  return renderedPoints.value > 0 && renderedPoints.value < originalPoints.value
+})
+const numericColumns = computed(() => {
+  const cols = props.data?.columns || []
+  if (!props.data || cols.length === 0) return []
+
+  const explicitNumeric = cols.filter(c => c.type === 'number')
+  if (explicitNumeric.length > 0) return explicitNumeric
+
+  // Fallback: infer numeric columns from row values when schema type is unavailable.
+  return cols.filter((col) => {
+    let checked = 0
+    let numeric = 0
+    for (const row of props.data!.rows) {
+      const value = row[col.id]
+      if (value === null || value === undefined || value === '') continue
+      checked += 1
+      if (!isNaN(parseFloat(String(value)))) numeric += 1
+      if (checked >= 50) break
+    }
+    return checked > 0 && numeric / checked >= 0.8
+  })
+})
+
+function autoDetectAxisMapping() {
+  if (!props.data || props.data.columns.length === 0) return
+  if (
+    localConfig.value.axisMapping.startTime &&
+    localConfig.value.axisMapping.endTime &&
+    localConfig.value.axisMapping.mass
+  ) {
+    return
+  }
+
+  const candidates = numericColumns.value
+  if (candidates.length === 0) return
+
+  const byName = (patterns: string[]) => candidates.find((col) => {
+    const lower = col.name.toLowerCase()
+    return patterns.some((p) => lower.includes(p))
+  })?.id
+
+  const start = byName(['minelutiontime', 'start', 'min_time', 'retention', 'rt', 'time']) || candidates[0]?.id
+  const end =
+    byName(['maxelutiontime', 'end', 'max_time']) ||
+    candidates.find((c) => c.id !== start)?.id ||
+    start
+  const mass =
+    byName(['monomass', 'mass', 'mz']) ||
+    candidates.find((c) => c.id !== start && c.id !== end)?.id ||
+    candidates[0]?.id
+  const intensity = byName(['apexintensity', 'intensity', 'abundance'])
+
+  localConfig.value.axisMapping = {
+    ...localConfig.value.axisMapping,
+    startTime: localConfig.value.axisMapping.startTime || start || '',
+    endTime: localConfig.value.axisMapping.endTime || end || '',
+    mass: localConfig.value.axisMapping.mass || mass || '',
+    intensity: localConfig.value.axisMapping.intensity || intensity || '',
+  }
+  emit('configChange', { ...localConfig.value })
+}
 
 function getFeatureData() {
-  if (!props.data || !localConfig.value.axisMapping.rt || !localConfig.value.axisMapping.mz) return []
+  if (
+    props.data &&
+    (!localConfig.value.axisMapping.startTime ||
+      !localConfig.value.axisMapping.endTime ||
+      !localConfig.value.axisMapping.mass)
+  ) {
+    autoDetectAxisMapping()
+  }
 
-  const rt = localConfig.value.axisMapping.rt
-  const mz = localConfig.value.axisMapping.mz
+  if (
+    !props.data ||
+    !localConfig.value.axisMapping.startTime ||
+    !localConfig.value.axisMapping.endTime ||
+    !localConfig.value.axisMapping.mass
+  ) {
+    renderedPoints.value = 0
+    return []
+  }
+
+  const startCol = localConfig.value.axisMapping.startTime
+  const endCol = localConfig.value.axisMapping.endTime
+  const massCol = localConfig.value.axisMapping.mass
   const intensity = localConfig.value.axisMapping.intensity
 
-  const data = props.data.rows.map((row, index) => {
-    const rtValue = typeof row[rt] === 'number'
-      ? row[rt] as number
-      : parseFloat(String(row[rt]))
-    const mzValue = typeof row[mz] === 'number'
-      ? row[mz] as number
-      : parseFloat(String(row[mz]))
+  const parsed = props.data.rows.map((row, index) => {
+    const startTime = typeof row[startCol] === 'number'
+      ? row[startCol] as number
+      : parseFloat(String(row[startCol]))
+    const endTime = typeof row[endCol] === 'number'
+      ? row[endCol] as number
+      : parseFloat(String(row[endCol]))
+    const mass = typeof row[massCol] === 'number'
+      ? row[massCol] as number
+      : parseFloat(String(row[massCol]))
     const intensityValue = intensity
       ? (typeof row[intensity] === 'number'
           ? row[intensity] as number
@@ -127,25 +237,33 @@ function getFeatureData() {
       )
       : 1
 
-    return { rt: rtValue, mz: mzValue, intensity: intensityValue, index }
-  }).filter(d => !isNaN(d.rt) && !isNaN(d.mz))
+    let s = startTime
+    let e = endTime
+    if (!isNaN(s) && !isNaN(e) && e < s) {
+      const tmp = s
+      s = e
+      e = tmp
+    }
 
-  if (data.length > 10000) {
-    const step = Math.ceil(data.length / 10000)
-    renderedPoints.value = data.length
-    return data.filter((_, i) => i % step === 0)
+    return { startTime: s, endTime: e, mass, intensity: intensityValue, index }
+  }).filter(d => !isNaN(d.startTime) && !isNaN(d.endTime) && !isNaN(d.mass))
+
+  const total = parsed.length
+  if (total === 0) {
+    renderedPoints.value = 0
+    return []
   }
 
-  renderedPoints.value = data.length
-  return data
-}
+  const maxTraces = Math.max(1, localConfig.value.maxTraces || 10000)
+  if (total > maxTraces) {
+    const step = Math.ceil(total / maxTraces)
+    const sampled = parsed.filter((_, i) => i % step === 0)
+    renderedPoints.value = sampled.length
+    return sampled
+  }
 
-function getColorForIntensity(intensity: number, min: number, max: number): string {
-  const colors = colorSchemes.find(c => c.id === localConfig.value.colorScheme)?.colors || colorSchemes[0].colors
-  if (min === max) return colors[Math.floor(colors.length / 2)]
-  const normalized = (intensity - min) / (max - min)
-  const idx = Math.min(Math.floor(normalized * colors.length), colors.length - 1)
-  return colors[idx]
+  renderedPoints.value = total
+  return parsed
 }
 
 function getIntensityRange() {
@@ -154,9 +272,10 @@ function getIntensityRange() {
   let min = Infinity, max = -Infinity
   props.data?.rows.forEach(row => {
     const val = row[intensityCol]
-    if (typeof val === 'number' && !isNaN(val)) {
-      if (val < min) min = val
-      if (val > max) max = val
+    const numeric = typeof val === 'number' ? val : parseFloat(String(val))
+    if (!isNaN(numeric)) {
+      if (numeric < min) min = numeric
+      if (numeric > max) max = numeric
     }
   })
   return min === Infinity ? null : { min, max }
@@ -164,84 +283,113 @@ function getIntensityRange() {
 function updateChart() {
   if (!baseViewer.value) return
 
-  const chartInstance = baseViewer.value.chart
-  if (!chartInstance?.value) return
-
-  const chart = chartInstance.value
+  const chart = baseViewer.value.chart
+  if (!chart) return
   const data = getFeatureData()
   if (data.length === 0) {
+    // Guard against transient empty updates after successful render.
+    if (hasRenderedOnce.value && (props.data?.rows?.length || 0) > 0) {
+      return
+    }
     chart.clear()
     return
   }
-
 
   const selectedIndices = baseViewer.value.getSelectedItems?.() || new Set<number>()
   const selectedData = data.filter(d => selectedIndices.has(d.index))
   const unselectedData = data.filter(d => !selectedIndices.has(d.index))
   const intensityRange = getIntensityRange()
 
+  const hasIntensity = Boolean(localConfig.value.axisMapping.intensity && intensityRange)
   const option: EChartsOption = {
     grid: { left: 60, right: 40, top: 40, bottom: 60 },
     tooltip: {
       formatter: (params: any) => {
         const d = params.data
-        let html = `RT: ${d.rt?.toFixed(2)} min<br/>m/z: ${d.mz?.toFixed(4)}`
-        if (localConfig.value.axisMapping.intensity && d.intensity !== undefined) {
-          html += `<br/>Intensity: ${d.intensity.toFixed(0)}`
+        if (!d) return ''
+        const s = typeof d.startTime === 'number' ? d.startTime : d.value?.[0]
+        const e = typeof d.endTime === 'number' ? d.endTime : d.value?.[1]
+        const m = typeof d.mass === 'number' ? d.mass : d.value?.[2]
+        const inten = typeof d.intensity === 'number' ? d.intensity : d.value?.[3]
+        let html = `Start: ${Number(s).toFixed(2)}<br/>End: ${Number(e).toFixed(2)}<br/>Mass: ${Number(m).toFixed(4)}`
+        if (hasIntensity && inten !== undefined && !isNaN(Number(inten))) {
+          html += `<br/>Intensity: ${Number(inten).toFixed(0)}`
         }
         return html
       },
     },
     xAxis: {
       type: 'value',
-      name: 'Retention Time (min)',
+      name: 'Time',
       nameLocation: 'middle',
       nameGap: 30,
       scale: true,
     },
     yAxis: {
       type: 'value',
-      name: 'm/z',
+      name: 'Mass',
       nameLocation: 'middle',
       nameGap: 40,
       scale: true,
     },
+    visualMap: hasIntensity ? {
+      type: 'continuous',
+      min: intensityRange!.min,
+      max: intensityRange!.max,
+      calculable: true,
+      orient: 'horizontal',
+      left: 'center',
+      top: 0,
+      inRange: { color: colorSchemes.find(c => c.id === localConfig.value.colorScheme)?.colors || colorSchemes[0].colors },
+    } : undefined,
     series: [
       {
         name: 'Selected',
-        type: 'scatter',
-        data: selectedData.map(d => ({ value: [d.rt, d.mz], ...d })),
-        symbolSize: (params: any) => {
-          const size = localConfig.value.pointSize || 8
-          const intensity = params.data.intensity
-          if (intensity !== undefined && intensityRange) {
-            return size * (0.5 + 0.5 * (intensity - intensityRange.min) / (intensityRange.max - intensityRange.min))
+        type: 'custom',
+        coordinateSystem: 'cartesian2d',
+        renderItem: (_params: any, api: any) => {
+          const s = api.value(0)
+          const e = api.value(1)
+          const m = api.value(2)
+          const p1 = api.coord([s, m])
+          const p2 = api.coord([e, m])
+          const style = {
+            stroke: hasIntensity ? (api.visual('color') as string) : '#f56c6c',
+            lineWidth: 3,
+            opacity: 1,
+            shadowBlur: 6,
+            shadowColor: 'rgba(0,0,0,0.25)',
           }
-          return size
+          return { type: 'line', shape: { x1: p1[0], y1: p1[1], x2: p2[0], y2: p2[1] }, style }
         },
-        itemStyle: { color: '#e74c3c', borderColor: '#fff', borderWidth: 2 },
+        data: selectedData.map(d => ({
+          value: [d.startTime, d.endTime, d.mass, d.intensity, d.index],
+          ...d,
+        })),
+        encode: { x: [0, 1], y: 2, tooltip: [0, 1, 2, 3], itemName: 4 },
       },
       {
         name: 'Features',
-        type: 'scatter',
-        data: unselectedData.map(d => ({ value: [d.rt, d.mz], ...d })),
-        symbolSize: (params: any) => {
-          const size = localConfig.value.pointSize || 8
-          const intensity = params.data.intensity
-          if (intensity !== undefined && intensityRange) {
-            return size * (0.5 + 0.5 * (intensity - intensityRange.min) / (intensityRange.max - intensityRange.min))
+        type: 'custom',
+        coordinateSystem: 'cartesian2d',
+        renderItem: (_params: any, api: any) => {
+          const s = api.value(0)
+          const e = api.value(1)
+          const m = api.value(2)
+          const p1 = api.coord([s, m])
+          const p2 = api.coord([e, m])
+          const style = {
+            stroke: hasIntensity ? (api.visual('color') as string) : '#409eff',
+            lineWidth: 2,
+            opacity: localConfig.value.opacity,
           }
-          return size
+          return { type: 'line', shape: { x1: p1[0], y1: p1[1], x2: p2[0], y2: p2[1] }, style }
         },
-        itemStyle: {
-          color: (params: any) => {
-            if (localConfig.value.axisMapping.intensity && params.data.intensity !== undefined && intensityRange) {
-              return getColorForIntensity(params.data.intensity, intensityRange.min, intensityRange.max)
-            }
-            return '#3498db'
-          },
-          opacity: localConfig.value.opacity
-        } as any,
+        data: unselectedData.map(d => ({
+          value: [d.startTime, d.endTime, d.mass, d.intensity, d.index],
+          ...d,
+        })),
+        encode: { x: [0, 1], y: 2, tooltip: [0, 1, 2, 3], itemName: 4 },
       },
     ],
     dataZoom: [
@@ -249,12 +397,53 @@ function updateChart() {
       { type: 'inside', yAxisIndex: 0, filterMode: 'none' },
       { type: 'slider', xAxisIndex: 0, bottom: 10 },
     ],
+    brush: {
+      toolbox: ['rect', 'clear'],
+      xAxisIndex: 'all',
+      yAxisIndex: 'all',
+      brushMode: 'single'
+    }
   }
 
   chart.setOption(option, true)
+  hasRenderedOnce.value = true
 }
 
 function onChartReady(chart: any) {
+  chart.on('brushEnd', (params: any) => {
+    const areas = params?.areas || []
+    if (!areas.length) return
+    const area = areas[0]
+    const coordRange = area?.coordRange
+    if (!coordRange || coordRange.length !== 2) return
+
+    const xMin = Math.min(coordRange[0][0], coordRange[1][0])
+    const xMax = Math.max(coordRange[0][0], coordRange[1][0])
+    const yMin = Math.min(coordRange[0][1], coordRange[1][1])
+    const yMax = Math.max(coordRange[0][1], coordRange[1][1])
+
+    const data = getFeatureData()
+    const nextSelected = new Set<number>()
+    data.forEach((item) => {
+      const inTime = item.startTime <= xMax && item.endTime >= xMin
+      const inMass = item.mass >= yMin && item.mass <= yMax
+      if (inTime && inMass) {
+        nextSelected.add(item.index)
+      }
+    })
+
+    baseViewer.value?.clearSelection?.()
+    nextSelected.forEach((idx) => baseViewer.value?.addSelection?.(idx))
+    selectedFeatures.value = nextSelected.size
+    updateChart()
+  })
+
+  chart.on('dblclick', () => {
+    baseViewer.value?.clearSelection?.()
+    selectedFeatures.value = 0
+    updateChart()
+  })
+
   chart.on('click', (params: any) => {
     if (params.data && typeof params.data.index === 'number') {
       emit('featureClick', params.data)
@@ -265,6 +454,7 @@ function onChartReady(chart: any) {
       } else {
         baseViewer.value?.addSelection?.(idx)
       }
+      selectedFeatures.value = baseViewer.value?.getSelectedItems?.().size || 0
       updateChart()
     }
   })
@@ -273,6 +463,11 @@ function onChartReady(chart: any) {
 }
 
 function handleSelectionChange(selection: any) {
+  if (isSyncingExternalSelection.value) {
+    selectedFeatures.value = selection?.selectedIndices?.size || 0
+    return
+  }
+  selectedFeatures.value = selection?.selectedIndices?.size || 0
   emit('selectionChange', selection)
   updateChart()
 }
@@ -282,8 +477,35 @@ function updateConfig() {
   updateChart()
 }
 
-watch(() => props.data, () => updateChart(), { deep: true })
-watch(() => props.selection, () => updateChart(), { deep: true })
+watch(() => props.selection, (s) => {
+  if (!baseViewer.value) return
+  isSyncingExternalSelection.value = true
+  const current = baseViewer.value.getSelectedItems?.() || new Set<number>()
+  const incoming = s?.selectedIndices || new Set<number>()
+  const sameSize = current.size === incoming.size
+  const sameItems = sameSize && Array.from(incoming).every((idx) => current.has(idx))
+  if (!sameItems) {
+    baseViewer.value.setSelection?.(Array.from(incoming))
+  }
+  if (incoming.size) {
+    selectedFeatures.value = incoming.size
+  } else {
+    selectedFeatures.value = 0
+  }
+  isSyncingExternalSelection.value = false
+  updateChart()
+}, { deep: true })
+watch(
+  () => props.data,
+  () => {
+    if (!props.data || (props.data.rows?.length || 0) === 0) {
+      hasRenderedOnce.value = false
+    }
+    autoDetectAxisMapping()
+    updateChart()
+  },
+  { deep: true, immediate: true }
+)
 </script>
 
 <script lang="ts">

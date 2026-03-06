@@ -45,7 +45,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, onMounted, nextTick } from 'vue'
+import { ref, watch, nextTick } from 'vue'
 import { Loading } from '@element-plus/icons-vue'
 import { useECharts } from '@/composables/useECharts'
 import { useFullscreen } from '@/composables/useFullscreen'
@@ -69,12 +69,12 @@ const emit = defineEmits<{
 }>()
 
 // Refs
-const chartContainer = ref<HTMLElement>()
+const chartContainer = ref<HTMLElement | null>(null)
 
 // Composables
-const { chart, isReady, init, setOption, resize } = useECharts(chartContainer)
+const { chart, isReady, setOption, resize } = useECharts(chartContainer)
 const { isFullscreen, toggleFullscreen } = useFullscreen()
-const { selectedItems, selectedCount, hasSelection, clearSelection, addSelection, removeSelection, onSelectionChange } = useChartSelectionIndex()
+const { selectedItems, selectedCount, hasSelection, clearSelection, addSelection, removeSelection, setSelection, onSelectionChange } = useChartSelectionIndex()
 
 // Expose methods for parent components
 defineExpose({
@@ -85,6 +85,7 @@ defineExpose({
   clearSelection,
   addSelection,
   removeSelection,
+  setSelection,
   getSelectedItems: () => selectedItems.value
 })
 
@@ -108,15 +109,6 @@ onSelectionChange((items) => {
 watch(isFullscreen, () => {
   nextTick(() => {
     resize()
-  })
-})
-
-// Initialize chart on mount
-onMounted(() => {
-  nextTick(() => {
-    if (!chart.value) {
-      init()
-    }
   })
 })
 </script>

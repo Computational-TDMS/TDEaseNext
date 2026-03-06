@@ -655,6 +655,7 @@ const executeWorkflow = async (silent: boolean = false) => {
     const exec = await WorkflowService.executeCompiled(wf, undefined, parameters, silent)
     const execId = (exec as any).executionId as string
     executionId.value = execId
+    workflowStore.setCurrentExecutionId(execId)
     executionStatus.value = (exec as any).status || 'pending'
     executionLogs.value = []
 

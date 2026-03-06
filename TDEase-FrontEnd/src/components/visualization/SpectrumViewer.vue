@@ -12,6 +12,12 @@
         <el-tag v-if="peakCount > 0" type="info" size="small">
           {{ peakCount }} peaks
         </el-tag>
+        <el-tag v-if="peakCount > 0" type="info" size="small">
+          {{ mzColumn }} / {{ intensityColumn }}
+        </el-tag>
+        <el-tag v-if="isFilteredBySelection" type="warning" size="small">
+          Filtered: {{ visiblePeakCount }} / {{ peakCount }}
+        </el-tag>
         <el-tag v-if="selectedPeaks > 0" type="success" size="small">
           {{ selectedPeaks }} selected
         </el-tag>
@@ -47,17 +53,46 @@ const emit = defineEmits<{
 const baseViewer = ref<InstanceType<typeof BaseEChartsViewer>>()
 const loading = ref(false)
 const showLabels = ref(false)
+const localSelectedCount = ref(0)
+const isSyncingExternalSelection = ref(false)
+const hasRenderedOnce = ref(false)
 
-const mzColumn = computed(() => props.config?.mzColumn || 'mz')
-const intensityColumn = computed(() => props.config?.intensityColumn || 'intensity')
+const resolvedColumns = computed(() => {
+  const cols = props.data?.columns || []
+  const findByName = (patterns: string[]) => cols.find((col) => {
+    const name = col.name.toLowerCase()
+    return patterns.some((p) => name.includes(p))
+  })?.id
+
+  const mzCandidate =
+    props.config?.mzColumn ||
+    findByName(['mz', 'm/z', 'mass', 'monomass']) ||
+    cols[0]?.id ||
+    'mz'
+  const intensityCandidate =
+    props.config?.intensityColumn ||
+    findByName(['intensity', 'apexintensity', 'abundance', 'height']) ||
+    cols[1]?.id ||
+    cols[0]?.id ||
+    'intensity'
+
+  return {
+    mz: mzCandidate,
+    intensity: intensityCandidate,
+  }
+})
+const mzColumn = computed(() => resolvedColumns.value.mz)
+const intensityColumn = computed(() => resolvedColumns.value.intensity)
 
 const peakCount = computed(() => props.data?.rows.length || 0)
-const selectedPeaks = computed(() => props.selection?.selectedIndices.size || 0)
+const selectedPeaks = computed(() => localSelectedCount.value)
+const upstreamSelection = computed(() => props.selection?.selectedIndices || new Set<number>())
+const isFilteredBySelection = computed(() => upstreamSelection.value.size > 0)
 
 function getSpectrumData() {
   if (!props.data) return []
 
-  return props.data.rows.map((row, index) => {
+  const allData = props.data.rows.map((row, index) => {
     const mz = typeof row[mzColumn.value] === 'number'
       ? row[mzColumn.value] as number
       : parseFloat(String(row[mzColumn.value]))
@@ -66,28 +101,97 @@ function getSpectrumData() {
       : parseFloat(String(row[intensityColumn.value]))
 
     return {
-      value: [mz, intensity],
       index,
       mz,
       intensity,
     }
-  }).filter(d => !isNaN(d.value[0]) && !isNaN(d.value[1]))
+  }).filter(d => !isNaN(d.mz) && !isNaN(d.intensity))
+
+  if (!isFilteredBySelection.value) {
+    return allData
+  }
+
+  const filtered = allData.filter((d) => upstreamSelection.value.has(d.index))
+  // Upstream and local row indices may diverge for some file formats; avoid blank canvas.
+  return filtered.length > 0 ? filtered : allData
 }
+const visiblePeakCount = computed(() => getSpectrumData().length)
 
 function updateChart() {
   if (!baseViewer.value) return
-  const chartInstance = baseViewer.value.chart
-  if (!chartInstance) return
+  const chart = baseViewer.value.chart
+  if (!chart) return
 
   const data = getSpectrumData()
   if (data.length === 0) {
-    chartInstance.clear()
+    // Guard against transient empty updates after successful render.
+    if (hasRenderedOnce.value && (props.data?.rows?.length || 0) > 0) {
+      return
+    }
+    chart.clear()
     return
   }
 
   const selectedIndices = baseViewer.value.getSelectedItems?.() || new Set<number>()
   const selectedData = data.filter(d => selectedIndices.has(d.index))
   const unselectedData = data.filter(d => !selectedIndices.has(d.index))
+
+  const series: any[] = [
+    {
+      name: 'Selected',
+      type: 'custom',
+      coordinateSystem: 'cartesian2d',
+      renderItem: (_params: any, api: any) => {
+        const mz = api.value(0)
+        const inten = api.value(1)
+        const p1 = api.coord([mz, 0])
+        const p2 = api.coord([mz, inten])
+        const style = api.style({
+          stroke: '#f56c6c',
+          lineWidth: 2,
+          opacity: 1,
+        })
+        return { type: 'line', shape: { x1: p1[0], y1: p1[1], x2: p2[0], y2: p2[1] }, style }
+      },
+      data: selectedData.map(d => ({ ...d, value: [d.mz, d.intensity, d.index] })),
+      encode: { x: 0, y: 1, tooltip: [0, 1], itemName: 2 },
+    },
+    {
+      name: 'Peaks',
+      type: 'custom',
+      coordinateSystem: 'cartesian2d',
+      renderItem: (_params: any, api: any) => {
+        const mz = api.value(0)
+        const inten = api.value(1)
+        const p1 = api.coord([mz, 0])
+        const p2 = api.coord([mz, inten])
+        const style = api.style({
+          stroke: '#409eff',
+          lineWidth: 1,
+          opacity: 0.85,
+        })
+        return { type: 'line', shape: { x1: p1[0], y1: p1[1], x2: p2[0], y2: p2[1] }, style }
+      },
+      data: unselectedData.map(d => ({ ...d, value: [d.mz, d.intensity, d.index] })),
+      encode: { x: 0, y: 1, tooltip: [0, 1], itemName: 2 },
+    },
+  ]
+
+  if (showLabels.value && selectedData.length > 0 && selectedData.length < 200) {
+    series.push({
+      name: 'Labels',
+      type: 'scatter',
+      data: selectedData.map(d => ({ ...d, value: [d.mz, d.intensity] })),
+      symbolSize: 4,
+      itemStyle: { color: '#f56c6c' },
+      label: {
+        show: true,
+        formatter: (p: any) => Number(p.data?.mz).toFixed(2),
+        fontSize: 9,
+        position: 'top',
+      },
+    })
+  }
 
   const option: EChartsOption = {
     grid: { left: 60, right: 40, top: 40, bottom: 60 },
@@ -110,38 +214,17 @@ function updateChart() {
       nameLocation: 'middle',
       nameGap: 40,
       scale: true,
+      min: 0,
     },
-    series: [
-      {
-        name: 'Selected',
-        type: 'line',
-        data: selectedData,
-        itemStyle: { color: '#e74c3c' },
-        lineStyle: { width: 2 },
-        showSymbol: true,
-        symbolSize: 6,
-        label: {
-          show: showLabels.value && selectedData.length < 50,
-          formatter: (params: any) => params.data.mz.toFixed(2),
-          fontSize: 9,
-        },
-      },
-      {
-        name: 'Peaks',
-        type: 'line',
-        data: unselectedData,
-        itemStyle: { color: '#3498db' },
-        lineStyle: { width: 1 },
-        showSymbol: false,
-      },
-    ],
+    series: series as any,
     dataZoom: [
       { type: 'inside', xAxisIndex: 0, filterMode: 'none' },
       { type: 'slider', xAxisIndex: 0, bottom: 10 },
     ],
   }
 
-  chartInstance.setOption(option, true)
+  chart.setOption(option, true)
+  hasRenderedOnce.value = true
 }
 
 function onChartReady(chart: any) {
@@ -163,12 +246,39 @@ function onChartReady(chart: any) {
 }
 
 function handleSelectionChange(selection: any) {
+  if (isSyncingExternalSelection.value) {
+    localSelectedCount.value = selection?.selectedIndices?.size || 0
+    return
+  }
+  localSelectedCount.value = selection?.selectedIndices?.size || 0
   emit('selectionChange', selection)
   updateChart()
 }
 
-watch(() => props.data, () => updateChart(), { deep: true })
-watch(() => props.selection, () => updateChart(), { deep: true })
+watch(() => props.data, () => {
+  if (!props.data || (props.data.rows?.length || 0) === 0) {
+    hasRenderedOnce.value = false
+  }
+  updateChart()
+}, { deep: true })
+watch(() => props.selection, (s) => {
+  if (!baseViewer.value) return
+  isSyncingExternalSelection.value = true
+  const current = baseViewer.value.getSelectedItems?.() || new Set<number>()
+  const incoming = s?.selectedIndices || new Set<number>()
+  const sameSize = current.size === incoming.size
+  const sameItems = sameSize && Array.from(incoming).every((idx) => current.has(idx))
+  if (!sameItems) {
+    baseViewer.value.setSelection?.(Array.from(incoming))
+  }
+  if (incoming.size) {
+    localSelectedCount.value = s.selectedIndices.size
+  } else {
+    localSelectedCount.value = 0
+  }
+  isSyncingExternalSelection.value = false
+  updateChart()
+}, { deep: true })
 watch(showLabels, () => updateChart())
 </script>
 

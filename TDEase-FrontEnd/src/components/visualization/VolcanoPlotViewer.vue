@@ -162,12 +162,12 @@ function getVolcanoData() {
 
 function updateChart() {
   if (!baseViewer.value) return
-  const chartInstance = baseViewer.value.chart
-  if (!chartInstance) return
+  const chart = baseViewer.value.chart
+  if (!chart) return
 
   const data = getVolcanoData()
   if (data.length === 0) {
-    chartInstance.clear()
+    chart.clear()
     return
   }
 
@@ -236,7 +236,7 @@ function updateChart() {
     } : undefined,
   }
 
-  chartInstance.setOption(option, true)
+  chart.setOption(option, true)
 }
 
 function onChartReady(chart: any) {

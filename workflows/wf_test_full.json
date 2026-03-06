@@ -1,9 +1,9 @@
 {
   "metadata": {
-    "id": "wf_test_full_fixed",
-    "name": "TOPFD/TOPPIC + InformedProteomics 并行测试工作流 (Fixed)",
-    "version": "3.1.0",
-    "description": "修复端口定义 - TopFD+TopPIC 与 PBFGen+ProMex+MSPathFinderT 同时运行",
+    "id": "wf_test_full",
+    "name": "TOPFD/TOPPIC + InformedProteomics 并行测试工作流",
+    "version": "3.2.0",
+    "description": "测试并行工作流 - TopFD+TopPIC 与 PBFGen+ProMex+MSPathFinderT 同时运行",
     "author": "TDEase",
     "created": "2026-03-05T00:00:00Z",
     "modified": "2026-03-05T00:00:00Z",
@@ -18,7 +18,7 @@
       "interactive",
       "featuremap",
       "spectrum",
-      "fixed"
+      "default"
     ]
   },
   "format_version": "2.0",
@@ -676,8 +676,7 @@
       "target": "spectrum_1",
       "sourceHandle": "output-selection_out",
       "targetHandle": "input-selection_in",
-      "connectionKind": "state",
-      "semanticType": "state/selection_ids"
+      "connectionKind": "data"
     },
     {
       "id": "e_topfd_spectrum2",
@@ -693,8 +692,7 @@
       "target": "spectrum_2",
       "sourceHandle": "output-selection_out",
       "targetHandle": "input-selection_in",
-      "connectionKind": "state",
-      "semanticType": "state/selection_ids"
+      "connectionKind": "data"
     }
   ],
   "connections": [],

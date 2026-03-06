@@ -1,4 +1,4 @@
-import { computed, shallowRef, onMounted, onUnmounted, type Ref as VueRef, type ComputedRef } from 'vue'
+import { computed, shallowRef, watch, onUnmounted, type Ref as VueRef, type ComputedRef } from 'vue'
 import * as echarts from 'echarts'
 import type { EChartsOption } from 'echarts'
 
@@ -11,7 +11,7 @@ export interface UseEChartsOptions {
 
 export interface UseEChartsReturn {
   chart: VueRef<echarts.ECharts | null>
-  chartContainer: VueRef<HTMLElement | undefined>
+  chartContainer: VueRef<HTMLElement | null | undefined>
   isReady: ComputedRef<boolean>
   init: () => void
   dispose: () => void
@@ -25,7 +25,7 @@ export interface UseEChartsReturn {
 }
 
 export function useECharts(
-  container: VueRef<HTMLElement | undefined>,
+  container: VueRef<HTMLElement | null | undefined>,
   options: UseEChartsOptions = {}
 ): UseEChartsReturn {
   const {
@@ -39,6 +39,8 @@ export function useECharts(
 
   let resizeObserver: ResizeObserver | null = null
   let resizeTimer: ReturnType<typeof setTimeout> | null = null
+  let visibilityHandler: (() => void) | null = null
+  let focusHandler: (() => void) | null = null
 
   const isReady = computed(() => chart.value !== null)
 
@@ -172,16 +174,39 @@ export function useECharts(
     })
 
     resizeObserver.observe(chartContainer.value)
+
+    visibilityHandler = () => {
+      if (document.visibilityState === 'visible') {
+        requestAnimationFrame(() => resize())
+      }
+    }
+    focusHandler = () => {
+      requestAnimationFrame(() => resize())
+    }
+    document.addEventListener('visibilitychange', visibilityHandler)
+    window.addEventListener('focus', focusHandler)
   }
 
-  onMounted(() => {
-    if (!chart.value && chartContainer.value) {
+  watch(
+    () => chartContainer.value,
+    (el) => {
+      if (!el || chart.value) return
       init()
       setupAutoResize()
-    }
-  })
+      requestAnimationFrame(() => resize())
+    },
+    { immediate: true, flush: 'post' }
+  )
 
   onUnmounted(() => {
+    if (visibilityHandler) {
+      document.removeEventListener('visibilitychange', visibilityHandler)
+      visibilityHandler = null
+    }
+    if (focusHandler) {
+      window.removeEventListener('focus', focusHandler)
+      focusHandler = null
+    }
     dispose()
   })
 

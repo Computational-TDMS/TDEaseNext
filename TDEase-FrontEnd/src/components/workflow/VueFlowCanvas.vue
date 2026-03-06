@@ -184,7 +184,14 @@ const edges = computed<Edge<any, any, string>[]>(() => workflowStore.connections
     data: {
       semanticType: conn.semanticType,
       dataType: isState ? undefined : 'file',
-      active: false
+      active: isState
+        ? stateBus.isConnectionActive(
+            conn.source.nodeId,
+            conn.source.portId,
+            conn.target.nodeId,
+            conn.target.portId
+          )
+        : false
     }
   }
 }))

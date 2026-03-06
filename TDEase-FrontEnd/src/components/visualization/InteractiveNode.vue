@@ -1,241 +1,287 @@
 <template>
-  <div class="interactive-node" :class="[`node-${nodeState}`, { 'edit-mode': isEditMode }]">
-    <!-- Node Header -->
-    <NodeHeader
+  <div class="interactive-node" :class="{ selected: !!selected }">
+    <div class="ports-column left">
+      <PortList side="left" :node-id="nodeId" :ports="inputs" />
+    </div>
+
+    <VisContainer
+      class="vis-main"
       :label="label"
       :visualization-type="visualizationType"
-      :loading="loading"
-      :error="error"
-      :pending-execution="pendingExecution"
-      :is-edit-mode="isEditMode"
-      @toggle-edit-mode="toggleEditMode"
-      @retry="handleRetry"
-      @toggle-fullscreen="toggleFullscreen"
-    />
-
-    <!-- Configuration Panel (Edit Mode) -->
-    <NodeConfigPanel
-      v-if="isEditMode && (hasData || hasUpstreamConnection)"
-      v-model:axis-mapping="axisMapping"
-      v-model:config="config"
-      v-model:color-scheme="colorScheme"
-      :visualization-type="visualizationType"
-      :available-columns="availableColumns"
-      @config-change="handleConfigChange"
-      @export="handleExport"
-    />
-
-    <!-- Visualization Content -->
-    <div class="node-content">
+      :data="tableData"
+      :schema="schema"
+      :loading-state="loadingState"
+      :has-upstream-connection="hasUpstreamConnection"
+      :source-port-id="sourcePortId"
+      :axis-mapping="axisMapping"
+      :canvas-state="{
+        selected: !!selected,
+        resizing: !!resizing,
+        dragging: !!dragging,
+        positionX: positionAbsoluteX,
+        positionY: positionAbsoluteY
+      }"
+      @reload="reloadData"
+      @update:axis-mapping="handleAxisMappingChange"
+    >
       <component
         :is="viewerComponent"
-        v-if="hasData && viewerComponent"
-        ref="viewerRef"
+        v-if="viewerComponent && tableData"
         :data="tableData"
-        :config="config"
+        :config="localConfig"
         :selection="selectionState"
-        :edit-mode="isEditMode"
         @selection-change="handleSelectionChange"
-        @config-change="handleConfigChange"
-        @export="handleExport"
+        @config-change="handleViewerConfigChange"
       />
+    </VisContainer>
 
-      <!-- Empty State -->
-      <div v-else-if="!hasData && !loading" class="empty-state">
-        <el-icon :size="48"><Document /></el-icon>
-        <p>{{ emptyStateMessage }}</p>
-        <el-button
-          v-if="hasUpstreamConnection"
-          type="primary"
-          :icon="Refresh"
-          @click="loadData"
-        >
-          Load Data
-        </el-button>
-      </div>
-
-      <!-- Loading State -->
-      <div v-else-if="loading" class="loading-state">
-        <el-icon class="is-loading" :size="48"><Loading /></el-icon>
-        <p>{{ loadingMessage }}</p>
-      </div>
-
-      <!-- Error State -->
-      <div v-else-if="error" class="error-state">
-        <el-icon :size="48"><Warning /></el-icon>
-        <p>{{ errorMessage }}</p>
-        <el-button type="primary" :icon="Refresh" @click="handleRetry">
-          Retry
-        </el-button>
-      </div>
+    <div class="ports-column right">
+      <PortList side="right" :node-id="nodeId" :ports="outputs" />
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
-import { Document, Loading, Warning, Refresh } from '@element-plus/icons-vue'
-import NodeHeader from './NodeHeader.vue'
-import NodeConfigPanel from './NodeConfigPanel.vue'
-import ScatterPlotViewer from './ScatterPlotViewer.vue'
-import HeatmapViewer from './HeatmapViewer.vue'
-import VolcanoPlotViewer from './VolcanoPlotViewer.vue'
-import SpectrumViewer from './SpectrumViewer.vue'
+import { computed, onUnmounted, ref, watch } from 'vue'
+import { storeToRefs } from 'pinia'
+import type { StatePayload } from '@/types/state-ports'
+import type { AxisMapping, SelectionState } from '@/types/visualization'
+import { useWorkflowStore } from '@/stores/workflow'
+import { useStateBusStore } from '@/stores/state-bus'
+import { useVisualizationStore } from '@/stores/visualization'
+import { useVisualizationData } from '@/composables/useVisualizationData'
+import PortList from '@/components/node/PortList.vue'
+import VisContainer from './VisContainer.vue'
 import FeatureMapViewer from './FeatureMapViewer.vue'
+import ScatterPlotViewer from './ScatterPlotViewer.vue'
 import TableViewer from './TableViewer.vue'
+import HeatmapViewer from './HeatmapViewer.vue'
+import SpectrumViewer from './SpectrumViewer.vue'
+import VolcanoPlotViewer from './VolcanoPlotViewer.vue'
 import HtmlViewer from './HtmlViewer.vue'
-import { useNodeStateManager } from '@/composables/useNodeStateManager'
-import type { SelectionState, ExportConfig } from '@/types/visualization'
+
+interface NodePort {
+  id: string
+  name?: string
+  type?: string
+  dataType?: string
+  pattern?: string
+  required?: boolean
+  accept?: string[]
+  provides?: string[]
+  portKind?: 'data' | 'state-in' | 'state-out'
+  semanticType?: string
+}
+
+interface InteractiveNodeData {
+  nodeId?: string
+  label?: string
+  toolId?: string
+  visualizationConfig?: {
+    type?: string
+    config?: Record<string, unknown>
+  }
+  nodeConfig?: {
+    inputs?: NodePort[]
+    outputs?: NodePort[]
+  }
+}
 
 interface Props {
-  nodeId: string
-  label: string
-  visualizationType?: string
+  id: string
+  data: InteractiveNodeData
+  selected?: boolean
+  dragging?: boolean
+  resizing?: boolean
+  positionAbsoluteX?: number
+  positionAbsoluteY?: number
 }
 
 const props = defineProps<Props>()
 
-const emit = defineEmits<{
-  selectionChange: [nodeId: string, selection: SelectionState]
-  configChange: [nodeId: string, config: any]
-  export: [nodeId: string, format: string]
-}>()
+const workflowStore = useWorkflowStore()
+const { currentExecutionId } = storeToRefs(workflowStore)
+const stateBus = useStateBusStore()
+const visualizationStore = useVisualizationStore()
 
-// Use node state manager
-const {
-  nodeState,
-  loading,
-  error,
-  pendingExecution,
-  hasData,
-  hasUpstreamConnection,
-  tableData,
-  schema,
-  selectedIndices,
-  selectionState,
-  axisMapping,
-  config,
-  colorScheme,
-  setLoading,
-  setError,
-  setPendingExecution,
-  setHasData,
-  setHasUpstreamConnection,
-  setTableData,
-  setSchema,
-  setSelectedIndices,
-  updateAxisMapping,
-  updateConfig,
-  updateColorScheme,
-  availableColumns,
-} = useNodeStateManager({ nodeId: props.nodeId })
+const nodeId = computed(() => props.data?.nodeId || props.id)
+const label = computed(() => props.data?.label || 'Interactive Viewer')
 
-// Local state
-const isEditMode = ref(false)
-const viewerRef = ref()
+const inputs = computed<NodePort[]>(() => {
+  const configured = props.data?.nodeConfig?.inputs
+  if (configured?.length) return configured
+  const node = workflowStore.nodes.find((item) => item.id === nodeId.value)
+  return ((node?.inputs || []) as NodePort[])
+})
 
-// Computed
+const outputs = computed<NodePort[]>(() => {
+  const configured = props.data?.nodeConfig?.outputs
+  if (configured?.length) return configured
+  const node = workflowStore.nodes.find((item) => item.id === nodeId.value)
+  return ((node?.outputs || []) as NodePort[])
+})
+
+const stateOutputPortId = computed(() => {
+  const port = outputs.value.find((output) => output.portKind === 'state-out')
+  return port?.id || 'selection_out'
+})
+
+const visualizationType = computed(() => {
+  const configured = props.data?.visualizationConfig?.type
+  if (configured) return configured
+  const toolId = props.data?.toolId || ''
+  if (toolId.includes('featuremap')) return 'featuremap'
+  if (toolId.includes('scatter')) return 'scatter'
+  if (toolId.includes('table')) return 'table'
+  if (toolId.includes('heatmap')) return 'heatmap'
+  if (toolId.includes('spectrum')) return 'spectrum'
+  if (toolId.includes('volcano')) return 'volcano'
+  if (toolId.includes('html')) return 'html'
+  return 'table'
+})
+
 const viewerComponent = computed(() => {
-  const typeMap: Record<string, any> = {
-    scatter: ScatterPlotViewer,
-    heatmap: HeatmapViewer,
-    volcano: VolcanoPlotViewer,
-    spectrum: SpectrumViewer,
+  const typeMap: Record<string, unknown> = {
     featuremap: FeatureMapViewer,
+    scatter: ScatterPlotViewer,
     table: TableViewer,
+    heatmap: HeatmapViewer,
+    spectrum: SpectrumViewer,
+    volcano: VolcanoPlotViewer,
     html: HtmlViewer,
   }
-  return typeMap[props.visualizationType || ''] || null
+  return typeMap[visualizationType.value] || TableViewer
 })
 
-const emptyStateMessage = computed(() => {
-  if (hasUpstreamConnection.value) {
-    return 'No data loaded. Click the button below to load data from upstream.'
+const localConfig = ref<Record<string, unknown>>({})
+const axisMapping = ref<AxisMapping>({})
+const selectionState = ref<SelectionState | null>(null)
+
+watch(
+  () => props.data?.visualizationConfig?.config,
+  (config) => {
+    const normalized = (config || {}) as Record<string, unknown>
+    localConfig.value = { ...normalized }
+    const nextAxisMapping = (normalized.axisMapping || {}) as AxisMapping
+    axisMapping.value = { ...nextAxisMapping }
+  },
+  { immediate: true, deep: true }
+)
+
+const {
+  hasUpstreamConnection,
+  sourcePortId,
+  data: tableData,
+  schema,
+  loadingState,
+  refreshData,
+} = useVisualizationData(nodeId, currentExecutionId)
+
+function persistVisualizationConfig(nextConfig: Record<string, unknown>, nextAxisMapping?: AxisMapping) {
+  if (nextAxisMapping) {
+    axisMapping.value = { ...nextAxisMapping }
   }
-  return 'Connect a data source to this node to visualize data.'
-})
-
-const loadingMessage = computed(() => {
-  if (pendingExecution.value) {
-    return 'Waiting for upstream execution to complete...'
+  const normalized = {
+    ...nextConfig,
+    axisMapping: { ...axisMapping.value },
   }
-  return 'Loading data...'
-})
-
-const errorMessage = ref('')
-
-// Methods
-function toggleEditMode() {
-  isEditMode.value = !isEditMode.value
+  localConfig.value = normalized
+  workflowStore.updateNode(nodeId.value, {
+    visualizationConfig: {
+      type: visualizationType.value,
+      config: normalized,
+    } as any,
+  } as any)
 }
 
-function toggleFullscreen() {
-  // Fullscreen logic
-  const element = document.querySelector('.interactive-node')
-  if (element) {
-    if (document.fullscreenElement) {
-      document.exitFullscreen()
-    } else {
-      element.requestFullscreen()
+function handleAxisMappingChange(nextMapping: AxisMapping) {
+  persistVisualizationConfig({ ...localConfig.value }, nextMapping)
+}
+
+function handleViewerConfigChange(nextConfig: Record<string, unknown>) {
+  persistVisualizationConfig({
+    ...localConfig.value,
+    ...nextConfig,
+  })
+}
+
+function normalizeSelectionPayload(payload: StatePayload): SelectionState | null {
+  if (payload.semanticType !== 'state/selection_ids') return null
+
+  const source = payload.data as any
+  if (!source) return null
+
+  if (source instanceof Set) {
+    return {
+      selectedIndices: source,
+      filterCriteria: [],
+      brushRegion: null,
     }
   }
+
+  if (Array.isArray(source)) {
+    return {
+      selectedIndices: new Set(source.map((item) => Number(item))),
+      filterCriteria: [],
+      brushRegion: null,
+    }
+  }
+
+  const selectedRaw = source.selectedIndices
+  const selectedIndices = selectedRaw instanceof Set
+    ? selectedRaw
+    : Array.isArray(selectedRaw)
+      ? new Set(selectedRaw.map((item: unknown) => Number(item)))
+      : null
+  if (!selectedIndices) return null
+
+  return {
+    selectedIndices,
+    filterCriteria: Array.isArray(source.filterCriteria) ? source.filterCriteria : [],
+    brushRegion: source.brushRegion || null,
+  }
 }
+
+const unsubscribeHandlers = ref<Array<() => void>>([])
+
+function clearStateSubscriptions() {
+  unsubscribeHandlers.value.forEach((unsubscribe) => unsubscribe())
+  unsubscribeHandlers.value = []
+}
+
+function setupStateSubscriptions() {
+  clearStateSubscriptions()
+  const stateInputPorts = inputs.value
+    .filter((port) => port.portKind === 'state-in')
+    .map((port) => port.id)
+  for (const portId of stateInputPorts) {
+    const unsubscribe = stateBus.subscribe(nodeId.value, portId, (payload) => {
+      const normalized = normalizeSelectionPayload(payload)
+      if (normalized) {
+        selectionState.value = normalized
+      }
+    })
+    unsubscribeHandlers.value.push(unsubscribe)
+  }
+}
+
+watch(
+  () => inputs.value.map((port) => `${port.id}:${port.portKind || 'data'}`),
+  () => setupStateSubscriptions(),
+  { immediate: true }
+)
 
 function handleSelectionChange(selection: SelectionState) {
-  setSelectedIndices(selection.selectedIndices)
-  emit('selectionChange', props.nodeId, selection)
+  selectionState.value = selection
+  visualizationStore.updateSelection(nodeId.value, selection, stateOutputPortId.value)
 }
 
-function handleConfigChange(newConfig: any) {
-  updateConfig(newConfig)
-  emit('configChange', props.nodeId, newConfig)
+async function reloadData() {
+  await refreshData()
 }
 
-function handleExport(format: string) {
-  emit('export', props.nodeId, format)
-}
-
-function handleRetry() {
-  setError(false)
-  loadData()
-}
-
-async function loadData() {
-  setLoading(true)
-  errorMessage.value = ''
-
-  try {
-    // Load data from API
-    const response = await fetch(`/api/nodes/${props.nodeId}/data`)
-    if (!response.ok) {
-      throw new Error('Failed to load data')
-    }
-    const data = await response.json()
-    setTableData(data)
-
-    // Load schema
-    const schemaResponse = await fetch(`/api/nodes/${props.nodeId}/data/schema`)
-    if (schemaResponse.ok) {
-      const schemaData = await schemaResponse.json()
-      setSchema(schemaData)
-    }
-
-    setError(false)
-  } catch (e) {
-    console.error('Error loading data:', e)
-    errorMessage.value = e instanceof Error ? e.message : 'Unknown error'
-    setError(true)
-  } finally {
-    setLoading(false)
-  }
-}
-
-// Lifecycle
-onMounted(() => {
-  // Auto-load data if we have an upstream connection
-  if (hasUpstreamConnection.value) {
-    loadData()
-  }
+onUnmounted(() => {
+  clearStateSubscriptions()
 })
 </script>
 
@@ -247,59 +293,39 @@ export default {
 
 <style scoped>
 .interactive-node {
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-  background: white;
-  border: 1px solid #dcdfe6;
-  border-radius: 8px;
-  overflow: hidden;
+  display: grid;
+  grid-template-columns: 120px minmax(520px, 1fr) 120px;
+  align-items: stretch;
+  gap: 8px;
+  min-height: 360px;
+  width: 100%;
+  background: transparent;
 }
 
-.interactive-node.fullscreen {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  z-index: 9999;
-  border-radius: 0;
+.interactive-node.selected {
+  filter: saturate(1.02);
 }
 
-.node-content {
-  flex: 1;
-  position: relative;
-  min-height: 400px;
+.ports-column {
+  min-width: 0;
 }
 
-.empty-state,
-.loading-state,
-.error-state {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  height: 100%;
-  padding: 40px;
-  text-align: center;
+.ports-column.left {
+  padding-top: 8px;
 }
 
-.empty-state p,
-.loading-state p,
-.error-state p {
-  margin: 16px 0 24px;
-  font-size: 14px;
-  color: #606266;
+.ports-column.right {
+  padding-top: 8px;
 }
 
-.error-state {
-  color: #f56c6c;
+.vis-main {
+  min-height: 360px;
 }
 
-.node-loading .node-content,
-.node-error .node-content {
-  display: flex;
-  align-items: center;
-  justify-content: center;
+@media (max-width: 960px) {
+  .interactive-node {
+    grid-template-columns: 100px minmax(420px, 1fr) 100px;
+    min-height: 320px;
+  }
 }
 </style>

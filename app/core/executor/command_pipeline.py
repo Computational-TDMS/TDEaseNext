@@ -282,8 +282,19 @@ class CommandPipeline:
 
             elif param_type == "choice":
                 choices = param_def.get("choices", {})
-                if value in choices:
-                    flags.append(choices[value])
+                # choices can be:
+                # - dict: {value: flag_or_token}
+                # - list: ["a", "b", ...] (no flag mapping, just allowed values)
+                if isinstance(choices, dict):
+                    if value in choices:
+                        mapped = choices.get(value)
+                        if isinstance(mapped, str) and mapped:
+                            flags.append(mapped)
+                        elif flag:
+                            flags.extend([flag, str(value)])
+                elif isinstance(choices, (list, tuple, set)):
+                    if value in choices and flag:
+                        flags.extend([flag, str(value)])
 
             elif param_type == "value":
                 if value is not None and value != "":

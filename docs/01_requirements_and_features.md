@@ -3,10 +3,10 @@
 ## 1.1 系统定位
 TDEase 是一个集成了**重型后端计算**与**实时前端交互**的质谱数据分析中台。它不仅支持大规模、多步骤的生物信息学工作流编排，还提供了用于实时探索的交互式节点和轻量级计算代理。
 
-## 1.2 全球功能矩阵 (Global Capabilities)
+## 1.2 全局功能矩阵 (Global Capabilities)
 ### A. 工作流编排与执行 (Core Engine)
 - **多引擎支持**：内置本地 Shell/Conda 运行器，支持多阶段 DAG 调度。
-- **标准化输出 (CWL)**：支持将图形化工作流导出为标准化 Common Workflow Language (CWL)，提升流程的可移植性与可复现性。
+<!-- - **标准化输出 (CWL)**：支持将图形化工作流导出为标准化 Common Workflow Language (CWL)，提升流程的可移植性与可复现性。 -->
 - **批量处理逻辑**：支持多样品并发执行，通过 `BatchConfig` 独立管理多样本间的参数差异。
 
 ### B. 交互式数据探索 (Interactive Visualization)

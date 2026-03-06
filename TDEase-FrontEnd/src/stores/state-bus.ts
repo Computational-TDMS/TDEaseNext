@@ -16,9 +16,19 @@ type StateCallback = (
 type ValidationResult = { ok: true } | { ok: false; reason: string }
 
 const KEY_SEPARATOR = '::'
+const PULSE_DURATION_MS = 1200
 
 function makeKey(nodeId: string, portId: string): string {
   return `${nodeId}${KEY_SEPARATOR}${portId}`
+}
+
+function makeConnectionKey(
+  sourceNodeId: string,
+  sourcePortId: string,
+  targetNodeId: string,
+  targetPortId: string
+): string {
+  return `${makeKey(sourceNodeId, sourcePortId)}=>${makeKey(targetNodeId, targetPortId)}`
 }
 
 function splitKey(key: string): { nodeId: string; portId: string } {
@@ -47,6 +57,7 @@ export const useStateBusStore = defineStore('stateBus', () => {
   const nodeStates = ref<Map<string, Map<string, StatePayload>>>(new Map())
   const subscriptions = ref<Map<string, Set<StateCallback>>>(new Map())
   const stateConnections = ref<Map<string, string[]>>(new Map())
+  const activeConnectionPulses = ref<Map<string, number>>(new Map())
 
   function getState(nodeId: string, portId: string): StatePayload | null {
     return nodeStates.value.get(nodeId)?.get(portId) || null
@@ -131,8 +142,20 @@ export const useStateBusStore = defineStore('stateBus', () => {
 
     for (const targetKey of targets) {
       const callbacks = subscriptions.value.get(targetKey)
-      if (!callbacks || callbacks.size === 0) continue
       const { nodeId: targetNodeId, portId: targetPortId } = splitKey(targetKey)
+      const pulseKey = makeConnectionKey(nodeId, portId, targetNodeId, targetPortId)
+      const pulseUntil = Date.now() + PULSE_DURATION_MS
+      activeConnectionPulses.value.set(pulseKey, pulseUntil)
+
+      // Remove pulse when expired (keep latest pulse if re-triggered quickly)
+      setTimeout(() => {
+        const current = activeConnectionPulses.value.get(pulseKey)
+        if (current === pulseUntil) {
+          activeConnectionPulses.value.delete(pulseKey)
+        }
+      }, PULSE_DURATION_MS)
+
+      if (!callbacks || callbacks.size === 0) continue
       callbacks.forEach((callback) => {
         callback(normalized, {
           sourceNodeId: nodeId,
@@ -144,6 +167,17 @@ export const useStateBusStore = defineStore('stateBus', () => {
     }
 
     return { ok: true }
+  }
+
+  function isConnectionActive(
+    sourceNodeId: string,
+    sourcePortId: string,
+    targetNodeId: string,
+    targetPortId: string
+  ): boolean {
+    const key = makeConnectionKey(sourceNodeId, sourcePortId, targetNodeId, targetPortId)
+    const expiresAt = activeConnectionPulses.value.get(key) || 0
+    return expiresAt > Date.now()
   }
 
   function detectCycle(
@@ -188,16 +222,19 @@ export const useStateBusStore = defineStore('stateBus', () => {
     nodeStates.value.clear()
     subscriptions.value.clear()
     stateConnections.value.clear()
+    activeConnectionPulses.value.clear()
   }
 
   return {
     nodeStates,
     subscriptions,
     stateConnections,
+    activeConnectionPulses,
     getState,
     setConnections,
     subscribe,
     dispatch,
+    isConnectionActive,
     validateConnection,
     detectCycle,
     clearAll,

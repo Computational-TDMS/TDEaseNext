@@ -31,8 +31,9 @@ export async function getNodeData(
   params: GetNodeDataParams
 ): Promise<NodeOutputResponse> {
   try {
-    const { execution_id, node_id, include_data = false, max_rows } = params
+    const { execution_id, node_id, port_id, include_data = false, max_rows } = params
     const queryParams: Record<string, unknown> = {}
+    if (port_id) queryParams.port_id = port_id
     if (include_data) queryParams.include_data = true
     if (max_rows !== undefined) queryParams.max_rows = max_rows
 

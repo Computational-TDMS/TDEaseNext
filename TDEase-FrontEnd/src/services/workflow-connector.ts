@@ -17,6 +17,11 @@ interface ToolInfo {
   [key: string]: unknown
 }
 
+interface FileSourceResult {
+  nodeId: string
+  portId?: string
+}
+
 /**
  * Resolve node input source type
  *
@@ -79,16 +84,20 @@ export function resolveNodeInputSource(
   // Check if source node is interactive
   if (toolInfo.executionMode === 'interactive') {
     // Traverse to find original file source
-    const fileSourceId = findOriginalFileSource(
+    const fileSource = findOriginalFileSourceWithPort(
       sourceNodeId,
       nodes,
       connections,
       tools,
       new Set()
     )
-    if (fileSourceId) {
-      console.log(`[WorkflowConnector] Found file source: ${fileSourceId}`)
-      return { type: 'file', sourceNodeId: fileSourceId, sourcePortId }
+    if (fileSource) {
+      console.log(`[WorkflowConnector] Found file source: ${fileSource.nodeId}`)
+      return {
+        type: 'file',
+        sourceNodeId: fileSource.nodeId,
+        sourcePortId: fileSource.portId || sourcePortId,
+      }
     }
     console.log(`[WorkflowConnector] No file source, using state: ${sourceNodeId}`)
     return { type: 'state', sourceNodeId }
@@ -99,6 +108,7 @@ export function resolveNodeInputSource(
   return {
     type: 'file',
     sourceNodeId,
+    sourcePortId,
   }
 }
 
@@ -139,6 +149,17 @@ export function findOriginalFileSource(
   tools: Record<string, ToolInfo>,
   visited: Set<string> = new Set()
 ): string | null {
+  const result = findOriginalFileSourceWithPort(nodeId, nodes, connections, tools, visited)
+  return result?.nodeId || null
+}
+
+function findOriginalFileSourceWithPort(
+  nodeId: string,
+  nodes: NodeDefinition[],
+  connections: ConnectionDefinition[],
+  tools: Record<string, ToolInfo>,
+  visited: Set<string> = new Set()
+): FileSourceResult | null {
   // Prevent infinite loops
   if (visited.has(nodeId)) {
     console.warn(`[WorkflowConnector] Circular dependency detected at node: ${nodeId}`)
@@ -153,29 +174,37 @@ export function findOriginalFileSource(
     return null
   }
 
-  // Check the first upstream connection
-  const edge = incomingEdges[0]
-  const sourceNodeId = edge.source.nodeId
+  // Prioritize data connections; state connections are fallback only
+  const sortedEdges = [...incomingEdges].sort((left, right) => {
+    const leftRank = left.connectionKind === 'data' ? 0 : 1
+    const rightRank = right.connectionKind === 'data' ? 0 : 1
+    return leftRank - rightRank
+  })
 
-  const sourceNode = nodes.find((n) => n.id === sourceNodeId)
-  if (!sourceNode) {
-    return null
+  for (const edge of sortedEdges) {
+    const sourceNodeId = edge.source.nodeId
+    const sourceNode = nodes.find((n) => n.id === sourceNodeId)
+    if (!sourceNode) continue
+
+    const toolId = (sourceNode as any).nodeConfig?.toolId || sourceNode.type
+    const toolInfo = tools[toolId]
+    if (!toolInfo) continue
+
+    // If upstream is interactive, continue traversing
+    if (toolInfo.executionMode === 'interactive') {
+      const nested = findOriginalFileSourceWithPort(sourceNodeId, nodes, connections, tools, visited)
+      if (nested) return nested
+      continue
+    }
+
+    // Found the processing node and source output port
+    return {
+      nodeId: sourceNodeId,
+      portId: edge.source.portId,
+    }
   }
 
-  const toolId = (sourceNode as any).nodeConfig?.toolId || sourceNode.type
-  const toolInfo = tools[toolId]
-
-  if (!toolInfo) {
-    return null
-  }
-
-  // If upstream is interactive, continue traversing
-  if (toolInfo.executionMode === 'interactive') {
-    return findOriginalFileSource(sourceNodeId, nodes, connections, tools, visited)
-  }
-
-  // Found the processing node
-  return sourceNodeId
+  return null
 }
 
 /**

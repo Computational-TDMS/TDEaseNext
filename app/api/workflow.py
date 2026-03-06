@@ -946,6 +946,12 @@ async def execute(
             if v is not None:
                 sample_ctx[k] = str(v)
 
+        # Keep execution record consistent even when request omitted sample_ids.
+        if not sample_id:
+            sample_from_ctx = sample_ctx.get("sample")
+            if isinstance(sample_from_ctx, str) and sample_from_ctx.strip():
+                sample_id = sample_from_ctx.strip()
+
         # 注入 raw_path/fasta_path 到 data_loader/fasta_loader 节点，供 validator 通过
         _inject_sample_paths_into_workflow(wf_v2, sample_ctx)
 

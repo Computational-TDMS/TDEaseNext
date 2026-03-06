@@ -310,6 +310,26 @@ def resolve_node_outputs(
         if sample:
             sample_context = sample.get("context", {})
 
+    # 如果 sample_context 为空或缺少 sample，占位符，先尝试从 workspace/samples.json 推断
+    if not sample_context or not sample_context.get("sample"):
+        samples_file = workspace_path / "samples.json"
+        if samples_file.exists():
+            try:
+                with open(samples_file, "r", encoding="utf-8") as fp:
+                    samples_payload = json.load(fp)
+                samples_map = samples_payload.get("samples", {})
+                if isinstance(samples_map, dict) and samples_map:
+                    first_sample = next(iter(samples_map.values()))
+                    if isinstance(first_sample, dict):
+                        first_ctx = first_sample.get("context", {}) or {}
+                        if isinstance(first_ctx, dict):
+                            sample_context = {**sample_context, **first_ctx}
+            except Exception:
+                logger.debug(
+                    "[resolve_node_outputs] Failed to read samples.json for sample context fallback",
+                    exc_info=True,
+                )
+
     # 如果 sample_context 为空或缺少 sample，占位符，尝试从 workflow_snapshot.metadata 中推断
     if not sample_context or not sample_context.get("sample"):
         sample_name = None
@@ -328,9 +348,9 @@ def resolve_node_outputs(
         sample_context = {"sample": "default"}
 
     # 5. 解析输出路径
-    logger.info(f"[resolve_node_outputs] Resolving output paths for node {node_id}")
-    logger.info(f"[resolve_node_outputs] Sample context: {sample_context}")
-    logger.info(f"[resolve_node_outputs] Workspace: {workspace_path}")
+    logger.debug(f"[resolve_node_outputs] Resolving output paths for node {node_id}")
+    logger.debug(f"[resolve_node_outputs] Sample context: {sample_context}")
+    logger.debug(f"[resolve_node_outputs] Workspace: {workspace_path}")
 
     output_paths = _resolve_output_paths(
         node_id=node_id,
@@ -340,15 +360,15 @@ def resolve_node_outputs(
         workspace=workspace_path
     )
 
-    logger.info(f"[resolve_node_outputs] Resolved {len(output_paths)} output paths:")
+    logger.debug(f"[resolve_node_outputs] Resolved {len(output_paths)} output paths:")
     for idx, path in enumerate(output_paths):
         exists = path.exists()
         size = path.stat().st_size if exists else 0
-        logger.info(f"  [{idx}] {path} - exists: {exists}, size: {size} bytes")
+        logger.debug(f"  [{idx}] {path} - exists: {exists}, size: {size} bytes")
 
     # 6. 获取输出端口定义
     patterns = _get_output_patterns(tool_info)
-    logger.info(f"[resolve_node_outputs] Found {len(patterns)} output patterns")
+    logger.debug(f"[resolve_node_outputs] Found {len(patterns)} output patterns")
     outputs = []
 
     for idx, file_path in enumerate(output_paths):
@@ -356,10 +376,10 @@ def resolve_node_outputs(
         file_size = file_path.stat().st_size if file_exists else 0
         file_name = file_path.name
 
-        logger.info(f"[resolve_node_outputs] Processing output {idx}: {file_name}")
-        logger.info(f"  - Full path: {file_path}")
-        logger.info(f"  - Exists: {file_exists}")
-        logger.info(f"  - Size: {file_size} bytes")
+        logger.debug(f"[resolve_node_outputs] Processing output {idx}: {file_name}")
+        logger.debug(f"  - Full path: {file_path}")
+        logger.debug(f"  - Exists: {file_exists}")
+        logger.debug(f"  - Size: {file_size} bytes")
 
         # 获取端口信息
         pattern_info = patterns[idx] if idx < len(patterns) else {}
@@ -369,15 +389,15 @@ def resolve_node_outputs(
         )
         output_schema = pattern_info.get("schema", [])
 
-        logger.info(f"  - Port ID: {output_port_id}")
-        logger.info(f"  - Data type: {data_type}")
+        logger.debug(f"  - Port ID: {output_port_id}")
+        logger.debug(f"  - Data type: {data_type}")
 
         # 判断是否可解析
         extension = file_path.suffix.lower()
         parseable = extension in TABULAR_EXTENSIONS and file_exists
 
-        logger.info(f"  - Extension: {extension}")
-        logger.info(f"  - Parseable: {parseable} (in TABULAR_EXTENSIONS: {extension in TABULAR_EXTENSIONS})")
+        logger.debug(f"  - Extension: {extension}")
+        logger.debug(f"  - Parseable: {parseable} (in TABULAR_EXTENSIONS: {extension in TABULAR_EXTENSIONS})")
 
         output_entry = {
             "port_id": output_port_id,
@@ -395,10 +415,10 @@ def resolve_node_outputs(
         # 如果需要内联数据且文件可解析
         if include_data and file_exists and parseable:
             try:
-                logger.info(f"  - Parsing file with max_rows={max_rows}...")
+                logger.debug(f"  - Parsing file with max_rows={max_rows}...")
                 table_data = parse_tabular_file(file_path, max_rows)
-                logger.info(f"  - Successfully parsed {len(table_data['rows'])} rows")
-                logger.info(f"  - Columns: {table_data['columns']}")
+                logger.debug(f"  - Successfully parsed {len(table_data['rows'])} rows")
+                logger.debug(f"  - Columns: {table_data['columns']}")
                 output_entry["data"] = table_data
             except Exception as e:
                 logger.error(f"  - Failed to parse file {file_path}: {e}", exc_info=True)

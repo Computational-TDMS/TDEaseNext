@@ -5,11 +5,11 @@
   "description": "Interactive visualization tool for LC-MS feature maps - supports both TopFD and ProMex output formats",
   "executionMode": "interactive",
   "defaultMapping": {
-    "x": "rt",
-    "y": "mz",
+    "x": "Min_time",
+    "y": "Mass",
     "color": "intensity",
-    "size": "charge",
-    "label": "feature_id"
+    "size": "Intensity",
+    "label": "Mass"
   },
   "ports": {
     "inputs": [
@@ -22,12 +22,14 @@
         "pattern": "{sample}_ms1.feature",
         "description": "TopFD MS1 feature output file (.ms1.feature)",
         "columnMapping": {
-          "feature_id": "feature_id",
-          "mz": "mz",
-          "rt": "rt",
-          "intensity": "intensity",
-          "charge": "charge",
-          "mass": "mass"
+          "feature_id": "Mass",
+          "mz": "Mass",
+          "rt": "Min_time",
+          "rt_start": "Min_time",
+          "rt_end": "Max_time",
+          "intensity": "Intensity",
+          "charge": "Intensity",
+          "mass": "Mass"
         }
       },
       {
@@ -39,12 +41,14 @@
         "pattern": "{sample}.ms1ft",
         "description": "ProMex MS1 feature output file (.ms1ft)",
         "columnMapping": {
-          "feature_id": "FeatureID",
-          "mz": "Mass",
-          "rt": "RT",
-          "intensity": "Intensity",
-          "charge": "Charge",
-          "mass": "Mass"
+          "feature_id": "MonoMass",
+          "mz": "MonoMass",
+          "rt": "MinElutionTime",
+          "rt_start": "MinElutionTime",
+          "rt_end": "MaxElutionTime",
+          "intensity": "ApexIntensity",
+          "charge": "ApexIntensity",
+          "mass": "MonoMass"
         }
       }
     ],
@@ -65,7 +69,10 @@
       "label": "Plot Type",
       "description": "Type of visualization plot",
       "choices": ["scatter", "heatmap", "contour"],
-      "default": "scatter"
+      "default": "scatter",
+      "ui": {
+        "hidden": true
+      }
     },
     "color_scale": {
       "type": "choice",

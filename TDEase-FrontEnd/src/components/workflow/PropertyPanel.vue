@@ -11,7 +11,7 @@
         </el-form-item>
 
         <el-divider>参数配置</el-divider>
-        <template v-for="(p, key) in parameters" :key="key">
+        <template v-for="(p, key) in visibleParameters" :key="key">
           <el-form-item :label="p.label || key" :prop="`params.${key}`">
             <template v-if="p.type === 'choice'">
               <el-select v-model="form.params[key]">
@@ -123,6 +123,18 @@ onMounted(async () => {
 
 // 新 Schema: parameters 对象
 const parameters = computed(() => toolCfg.value?.parameters || {})
+
+// 仅用于表单展示的参数（支持在工具定义里通过 ui.hidden 隐藏）
+const visibleParameters = computed(() => {
+  const params = parameters.value as Record<string, any>
+  const result: Record<string, any> = {}
+  for (const [key, def] of Object.entries(params)) {
+    const paramDef = def as any
+    if (paramDef?.ui?.hidden) continue
+    result[key] = def
+  }
+  return result
+})
 
 // 新 Schema: ports.inputs 和 ports.outputs
 const inputs = computed(() => toolCfg.value?.ports?.inputs || [])

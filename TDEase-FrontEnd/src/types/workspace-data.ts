@@ -22,6 +22,16 @@ export interface TableData {
 }
 
 /**
+ * Column schema definition from tool/output metadata
+ */
+export interface ColumnSchema {
+  name: string;
+  type: string;
+  description?: string;
+  optional?: boolean;
+}
+
+/**
  * Output entry for a single port
  */
 export interface OutputEntry {
@@ -39,6 +49,8 @@ export interface OutputEntry {
   exists: boolean;
   /** Whether the file can be parsed as tabular data */
   parseable: boolean;
+  /** Optional schema for this output port */
+  schema?: ColumnSchema[];
   /** Parsed table data (only included when include_data=true and file is parseable) */
   data: TableData | null;
 }
@@ -136,6 +148,7 @@ export interface LatestExecutionResponse {
 export interface GetNodeDataParams {
   execution_id: string;
   node_id: string;
+  port_id?: string;
   include_data?: boolean;
   max_rows?: number;
 }

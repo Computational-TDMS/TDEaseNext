@@ -8,7 +8,7 @@
     @selection-change="handleSelectionChange"
   >
     <!-- Toolbar -->
-    <template #toolbar="{ fullscreen, toggleFullscreen }">
+    <template #toolbar="{ toggleFullscreen }">
       <div class="toolbar-left">
         <el-tag v-if="samplingApplied" type="warning" size="small">
           Sampled: {{ renderedPoints }} / {{ originalPoints }}
@@ -151,7 +151,6 @@ const emit = defineEmits<{
 
 // Refs
 const baseViewer = ref<InstanceType<typeof BaseEChartsViewer>>()
-const chartContainer = ref<HTMLElement>()
 
 // State
 const loading = ref(false)
@@ -236,13 +235,15 @@ function getScatterData(): { x: number; y: number; colorValue?: number; sizeValu
     .filter((d): d is NonNullable<typeof d> => d !== null)
 
   // Apply sampling for large datasets
-  if (data.length > 10000) {
-    const step = Math.ceil(data.length / 10000)
-    renderedPoints.value = data.length
-    return data.filter((_, i) => i % step === 0)
+  const total = data.length
+  if (total > 10000) {
+    const step = Math.ceil(total / 10000)
+    const sampled = data.filter((_, i) => i % step === 0)
+    renderedPoints.value = sampled.length
+    return sampled
   }
 
-  renderedPoints.value = data.length
+  renderedPoints.value = total
   return data
 }
 
@@ -263,8 +264,7 @@ function getColorRange() {
 function updateChart() {
   if (!baseViewer.value) return
 
-  const chartInstance = baseViewer.value.chart
-  const chart = chartInstance.value
+  const chart = baseViewer.value.chart
   if (!chart) return
 
   const data = getScatterData()
@@ -385,12 +385,10 @@ function onChartReady(chart: any) {
     })
 
     // Update base viewer selection
-    if (baseViewer.value) {
-      baseViewer.value.clearSelection?.()
-      newSelected.forEach(idx => {
-        baseViewer.value.addSelection?.(idx)
-      })
-    }
+    baseViewer.value?.clearSelection?.()
+    newSelected.forEach(idx => {
+      baseViewer.value?.addSelection?.(idx)
+    })
   })
 
   chart.on('click', (params: any) => {
@@ -436,7 +434,7 @@ watch(() => props.selection, (s) => {
   if (s && baseViewer.value) {
     baseViewer.value.clearSelection?.()
     s.selectedIndices.forEach(idx => {
-      baseViewer.value.addSelection?.(idx)
+      baseViewer.value?.addSelection?.(idx)
     })
     updateChart()
   }

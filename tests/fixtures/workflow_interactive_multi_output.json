@@ -1,0 +1,90 @@
+{
+  "metadata": {
+    "id": "wf_interactive_multi_output",
+    "name": "Interactive Multi-Output Validation Workflow",
+    "version": "1.0.0"
+  },
+  "nodes": [
+    {
+      "id": "topfd_1",
+      "type": "topfd",
+      "data": {
+        "label": "TopFD"
+      }
+    },
+    {
+      "id": "featuremap_1",
+      "type": "featuremap_viewer",
+      "data": {
+        "label": "Feature Map",
+        "visualizationConfig": {
+          "type": "featuremap",
+          "config": {
+            "axisMapping": {
+              "x": "rt",
+              "y": "mz"
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "table_1",
+      "type": "table_viewer",
+      "data": {
+        "label": "Table Viewer",
+        "visualizationConfig": {
+          "type": "table",
+          "config": {}
+        }
+      }
+    },
+    {
+      "id": "html_1",
+      "type": "html_viewer",
+      "data": {
+        "label": "HTML Viewer",
+        "visualizationConfig": {
+          "type": "html",
+          "config": {}
+        }
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "edge-topfd-featuremap",
+      "source": "topfd_1",
+      "target": "featuremap_1",
+      "sourceHandle": "output-ms1feature",
+      "targetHandle": "input-topfd_feature",
+      "connectionKind": "data"
+    },
+    {
+      "id": "edge-topfd-html",
+      "source": "topfd_1",
+      "target": "html_1",
+      "sourceHandle": "output-html_folder",
+      "targetHandle": "input-html_data",
+      "connectionKind": "data"
+    },
+    {
+      "id": "edge-topfd-table",
+      "source": "topfd_1",
+      "target": "table_1",
+      "sourceHandle": "output-ms2feature",
+      "targetHandle": "input-data_file",
+      "connectionKind": "data"
+    },
+    {
+      "id": "edge-featuremap-table-state",
+      "source": "featuremap_1",
+      "target": "table_1",
+      "sourceHandle": "output-selection_out",
+      "targetHandle": "input-selection_in",
+      "connectionKind": "state",
+      "semanticType": "state/selection_ids"
+    }
+  ]
+}
+

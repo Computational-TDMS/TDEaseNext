@@ -22,6 +22,16 @@ def interactive_workflow():
 
 
 @pytest.fixture
+def multi_output_interactive_workflow():
+    """Load the multi-output interactive workflow fixture."""
+    workflow_path = Path("tests/fixtures/workflow_interactive_multi_output.json")
+    if not workflow_path.exists():
+        pytest.skip("Multi-output workflow fixture not found")
+    with open(workflow_path) as f:
+        return json.load(f)
+
+
+@pytest.fixture
 def mock_workspace(tmp_path):
     """Create mock workspace directory"""
     workspace = tmp_path / "test_workspace"
@@ -254,6 +264,46 @@ async def test_workflow_persistence(interactive_workflow, tmp_path):
     loaded_featuremap = [n for n in loaded_workflow["nodes"] if n["type"] == "featuremap_viewer"][0]
     original_featuremap = [n for n in interactive_workflow["nodes"] if n["type"] == "featuremap_viewer"][0]
     assert loaded_featuremap["data"]["visualizationConfig"] == original_featuremap["data"]["visualizationConfig"]
+
+
+def test_multi_output_workflow_maps_distinct_topfd_ports_to_distinct_viewers(
+    multi_output_interactive_workflow
+):
+    """
+    Verify one compute node (TopFD) feeds different viewers via different output ports.
+    """
+    edges = multi_output_interactive_workflow["edges"]
+    topfd_data_edges = [
+        edge for edge in edges
+        if edge.get("source") == "topfd_1" and edge.get("connectionKind") == "data"
+    ]
+    assert len(topfd_data_edges) >= 2
+
+    port_by_target = {
+        edge["target"]: edge.get("sourceHandle")
+        for edge in topfd_data_edges
+    }
+    assert port_by_target.get("featuremap_1") == "output-ms1feature"
+    assert port_by_target.get("html_1") == "output-html_folder"
+    assert port_by_target.get("table_1") == "output-ms2feature"
+
+
+def test_multi_output_workflow_state_edges_are_semantic_and_explicit(
+    multi_output_interactive_workflow
+):
+    """
+    Verify cross-filter propagation edge is represented as semantic state flow.
+    """
+    edges = multi_output_interactive_workflow["edges"]
+    state_edges = [edge for edge in edges if edge.get("connectionKind") == "state"]
+    assert len(state_edges) == 1
+
+    state_edge = state_edges[0]
+    assert state_edge["source"] == "featuremap_1"
+    assert state_edge["target"] == "table_1"
+    assert state_edge.get("semanticType") == "state/selection_ids"
+    assert state_edge.get("sourceHandle") == "output-selection_out"
+    assert state_edge.get("targetHandle") == "input-selection_in"
 
 
 if __name__ == "__main__":

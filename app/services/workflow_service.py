@@ -97,6 +97,22 @@ def _enrich_sample_context_for_input_nodes(nodes: List[Dict[str, Any]], sample_c
         _set_if_missing("input_file", first.name)
 
 
+def _should_skip_node_on_resume(output_paths: List[Path]) -> bool:
+    """
+    Resume skip policy:
+    - no resolved outputs: cannot skip
+    - at least one resolved output exists: treat node as already done
+
+    Why "any" instead of "all":
+    Some tools (e.g. MSPathFinderT) declare multiple conditional outputs, and
+    only a subset is produced in a normal run. Requiring all outputs would
+    incorrectly re-run already completed nodes.
+    """
+    if not output_paths:
+        return False
+    return any(p.exists() for p in output_paths)
+
+
 class WorkflowService:
     """工作流编排服务 - 使用新架构"""
 
@@ -222,9 +238,7 @@ class WorkflowService:
             tool_id = node_data.get("type", "")
             ti = self.tools.get(tool_id, {})
             paths = _resolve_output_paths(node_id, tool_id, ti, c.sample_context, c.workspace_path)
-            if not paths:
-                return False
-            return all(p.exists() for p in paths)
+            return _should_skip_node_on_resume(paths)
 
         def build_task_spec(nid: str, node_data: Dict, c: ExecutionContext) -> Optional[TaskSpec]:
             return self.__build_task_spec(

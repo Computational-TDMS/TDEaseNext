@@ -30,3 +30,8 @@ StateBus 是整个交互架构的“神经系统”，支持：
 2.  **互动态 (Interaction)**：用户进行“画刷”或“点击”操作。
 3.  **分派态 (Dispatching)**：StateBus 捕获事件并路由至逻辑相关的下游节点。
 4.  **代理计算态 (Proxy Compute)**：针对复杂的验证操作（如 PTM 修饰搜索），实时请求 Compute Proxy。
+
+## 3.6 维护性约束（2026-03-06）
+- **连接类型推断以端口语义为准**：当端口组合为 `state-out -> state-in` 时，前端导入与 Store 归一化阶段必须强制识别为 `state`，即便旧工作流 JSON 中 `connectionKind` 被写成 `data`。
+- **FeatureMap 映射自动补全**：当后端未提供稳定列类型或节点首次加载时，FeatureMap 需基于列名与样本值自动推断 `startTime/endTime/mass/intensity`，避免出现“总行数正常但渲染点为 0”的假异常。
+- **采样标识只反映真实采样**：`Sampled x/y` 仅在 `x > 0 且 x < y` 时显示，防止未配置映射场景被误判为采样导致的空图。
