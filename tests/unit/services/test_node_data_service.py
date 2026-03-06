@@ -1,9 +1,11 @@
 """
 Unit tests for NodeDataService
 """
+import json
+import sqlite3
 import pytest
 from pathlib import Path
-from app.services.node_data_service import parse_tabular_file, TABULAR_EXTENSIONS
+from app.services.node_data_service import parse_tabular_file, resolve_node_outputs
 
 
 class TestParseTabularFile:
@@ -84,3 +86,116 @@ class TestParseTabularFile:
         assert len(result["rows"]) == 2
         assert result["rows"][0] == {"col_0": "val1", "col_1": "val2"}
         assert result["rows"][1] == {"col1": "val4", "col2": "val5", "col3": "val6"}
+
+
+def _build_execution_db(tmp_path: Path, workflow_snapshot: dict) -> sqlite3.Connection:
+    db = sqlite3.connect(":memory:")
+    db.execute(
+        """
+        CREATE TABLE executions (
+            id TEXT PRIMARY KEY,
+            workflow_snapshot TEXT,
+            workspace_path TEXT,
+            sample_id TEXT,
+            workflow_id TEXT
+        )
+        """
+    )
+    db.execute(
+        """
+        INSERT INTO executions (id, workflow_snapshot, workspace_path, sample_id, workflow_id)
+        VALUES (?, ?, ?, ?, ?)
+        """,
+        ("exec-1", json.dumps(workflow_snapshot), str(tmp_path), None, None),
+    )
+    db.commit()
+    return db
+
+
+def _mock_tool_registry(monkeypatch):
+    registry = {
+        "topfd": {
+            "id": "topfd",
+            "ports": {
+                "outputs": [
+                    {
+                        "id": "ms1feature",
+                        "handle": "ms1feature",
+                        "dataType": "feature",
+                        "pattern": "{sample}_ms1.feature",
+                        "schema": [{"name": "mz", "type": "number"}],
+                    },
+                    {
+                        "id": "ms2feature",
+                        "handle": "ms2feature",
+                        "dataType": "feature",
+                        "pattern": "{sample}_ms2.feature",
+                        "schema": [{"name": "scan", "type": "number"}],
+                    },
+                ]
+            },
+        }
+    }
+
+    monkeypatch.setattr(
+        "app.services.tool_registry.get_tool_registry",
+        lambda: registry,
+    )
+
+
+def test_resolve_node_outputs_filters_requested_port_and_keeps_requested_port_id(tmp_path, monkeypatch):
+    _mock_tool_registry(monkeypatch)
+
+    ms1_file = tmp_path / "default_ms1.feature"
+    ms2_file = tmp_path / "default_ms2.feature"
+    ms1_file.write_text("mz\tintensity\n100.1\t1200\n", encoding="utf-8")
+    ms2_file.write_text("scan\tcharge\n5\t2\n", encoding="utf-8")
+
+    workflow_snapshot = {
+        "nodes": [
+            {"id": "topfd_node", "type": "topfd"},
+        ]
+    }
+    db = _build_execution_db(tmp_path, workflow_snapshot)
+
+    result = resolve_node_outputs(
+        execution_id="exec-1",
+        node_id="topfd_node",
+        db=db,
+        port_id="ms1feature",
+        include_data=True,
+    )
+
+    assert result["port_id"] == "ms1feature"
+    assert len(result["outputs"]) == 1
+    assert result["outputs"][0]["port_id"] == "ms1feature"
+    assert result["outputs"][0]["schema"] == [{"name": "mz", "type": "number"}]
+    assert result["outputs"][0]["data"] is not None
+
+
+def test_resolve_node_outputs_includes_schema_for_each_output_port(tmp_path, monkeypatch):
+    _mock_tool_registry(monkeypatch)
+
+    (tmp_path / "default_ms1.feature").write_text("mz\tintensity\n100.1\t1200\n", encoding="utf-8")
+    (tmp_path / "default_ms2.feature").write_text("scan\tcharge\n5\t2\n", encoding="utf-8")
+
+    workflow_snapshot = {
+        "nodes": [
+            {"id": "topfd_node", "type": "topfd"},
+        ]
+    }
+    db = _build_execution_db(tmp_path, workflow_snapshot)
+
+    result = resolve_node_outputs(
+        execution_id="exec-1",
+        node_id="topfd_node",
+        db=db,
+        include_data=False,
+    )
+
+    outputs_by_port = {output["port_id"]: output for output in result["outputs"]}
+    assert result["port_id"] is None
+    assert "ms1feature" in outputs_by_port
+    assert "ms2feature" in outputs_by_port
+    assert outputs_by_port["ms1feature"]["schema"] == [{"name": "mz", "type": "number"}]
+    assert outputs_by_port["ms2feature"]["schema"] == [{"name": "scan", "type": "number"}]

@@ -211,6 +211,7 @@ async def download_execution_result(execution_id: str):
 async def get_node_data(
     execution_id: str,
     node_id: str,
+    port_id: Optional[str] = Query(None, description="Filter by specific output port ID"),
     include_data: bool = Query(False, description="Include parsed data in response"),
     max_rows: Optional[int] = Query(None, description="Maximum rows to parse (if include_data=true)"),
     db=Depends(get_database)
@@ -219,6 +220,7 @@ async def get_node_data(
     Get node output data with optional inline data content.
 
     Query parameters:
+    - port_id: Optional port ID to filter outputs (for multi-output tools)
     - include_data: If true, parse and include file data in response
     - max_rows: Maximum rows to parse (for tabular files)
 
@@ -230,6 +232,7 @@ async def get_node_data(
             execution_id=execution_id,
             node_id=node_id,
             db=db,
+            port_id=port_id,
             include_data=include_data,
             max_rows=max_rows
         )

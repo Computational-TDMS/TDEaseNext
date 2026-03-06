@@ -27,7 +27,10 @@
       "Bash(du:*)",
       "Bash(npx openspec:*)",
       "Bash(pnpm add:*)",
-      "Bash(pnpm test:*)"
+      "Bash(pnpm test:*)",
+      "Bash(pnpm build:*)",
+      "Bash(pnpm run:*)",
+      "Bash(sed:*)"
     ],
     "deny": [],
     "ask": []

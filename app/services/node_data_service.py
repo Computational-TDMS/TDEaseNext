@@ -25,26 +25,68 @@ BINARY_EXTENSIONS = {
 }
 
 
-def _get_output_patterns(tool_info: Dict[str, Any]) -> List[Dict[str, str]]:
-    """从工具定义获取输出模式：优先 output_patterns，否则从 ports.outputs 推导（新 Schema）"""
-    patterns = tool_info.get("output_patterns", [])
-    if patterns:
-        return patterns
-    outputs = tool_info.get("ports", {}).get("outputs", [])
-    for o in outputs:
-        if isinstance(o, dict) and o.get("pattern"):
-            patterns.append({
-                "pattern": o["pattern"],
-                "handle": o.get("handle") or o.get("id", "output"),
-            })
-    if not patterns and tool_info.get("outputs"):
-        for o in tool_info["outputs"]:
-            if isinstance(o, dict) and o.get("pattern"):
-                patterns.append({
-                    "pattern": o["pattern"],
-                    "handle": o.get("handle") or o.get("id", "output"),
+def _get_output_patterns(tool_info: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """从工具定义获取输出模式并保留端口元信息（schema/dataType 等）"""
+    output_patterns = tool_info.get("output_patterns", [])
+    normalized: List[Dict[str, Any]] = []
+
+    # Legacy schema: output_patterns
+    if output_patterns:
+        for idx, pattern_info in enumerate(output_patterns):
+            if isinstance(pattern_info, dict):
+                port_id = pattern_info.get("handle") or pattern_info.get("id") or f"output_{idx}"
+                normalized.append({
+                    "pattern": pattern_info.get("pattern", ""),
+                    "handle": port_id,
+                    "id": pattern_info.get("id", port_id),
+                    "data_type": pattern_info.get("dataType", ""),
+                    "schema": pattern_info.get("schema", []),
                 })
-    return patterns
+            else:
+                normalized.append({
+                    "pattern": str(pattern_info),
+                    "handle": f"output_{idx}",
+                    "id": f"output_{idx}",
+                    "data_type": "",
+                    "schema": [],
+                })
+        return normalized
+
+    # New schema: ports.outputs
+    outputs = tool_info.get("ports", {}).get("outputs", [])
+    for idx, output in enumerate(outputs):
+        if not isinstance(output, dict):
+            continue
+        pattern = output.get("pattern")
+        if not pattern:
+            continue
+        port_id = output.get("handle") or output.get("id", f"output_{idx}")
+        normalized.append({
+            "pattern": pattern,
+            "handle": port_id,
+            "id": output.get("id", port_id),
+            "data_type": output.get("dataType", ""),
+            "schema": output.get("schema", []),
+        })
+
+    # Compatibility: old outputs list
+    if not normalized and tool_info.get("outputs"):
+        for idx, output in enumerate(tool_info["outputs"]):
+            if not isinstance(output, dict):
+                continue
+            pattern = output.get("pattern")
+            if not pattern:
+                continue
+            port_id = output.get("handle") or output.get("id", f"output_{idx}")
+            normalized.append({
+                "pattern": pattern,
+                "handle": port_id,
+                "id": output.get("id", port_id),
+                "data_type": output.get("dataType", ""),
+                "schema": output.get("schema", []),
+            })
+
+    return normalized
 
 
 def _resolve_output_paths(
@@ -152,6 +194,7 @@ def resolve_node_outputs(
     execution_id: str,
     node_id: str,
     db,
+    port_id: Optional[str] = None,
     include_data: bool = False,
     max_rows: Optional[int] = None
 ) -> Dict[str, Any]:
@@ -162,6 +205,7 @@ def resolve_node_outputs(
         execution_id: 执行ID
         node_id: 节点ID
         db: 数据库连接
+        port_id: 可选的端口ID，用于过滤多输出工具的特定端口
         include_data: 是否内联解析数据
         max_rows: 最大读取行数（仅当 include_data=True 时生效）
 
@@ -169,10 +213,12 @@ def resolve_node_outputs(
         {
             "execution_id": str,
             "node_id": str,
+            "port_id": str | None,
             "outputs": [
                 {
                     "port_id": str,
                     "data_type": str,
+                    "schema": list,
                     "file_name": str,
                     "file_path": str,
                     "file_size": int,
@@ -185,6 +231,8 @@ def resolve_node_outputs(
     """
     from app.services.tool_registry import get_tool_registry
     from app.services.sample_store import SampleStore
+
+    requested_port_id = port_id
 
     # 1. 查询 executions 表获取 workflow_snapshot, workspace_path, sample_id, workflow_id
     cursor = db.cursor()
@@ -228,6 +276,7 @@ def resolve_node_outputs(
         raise ValueError(f"Invalid workflow snapshot JSON: {e}")
 
     nodes = workflow_snapshot.get("nodes", [])
+    metadata = workflow_snapshot.get("metadata", {}) or {}
     node_data = None
     for node in nodes:
         if node.get("id") == node_id:
@@ -261,7 +310,20 @@ def resolve_node_outputs(
         if sample:
             sample_context = sample.get("context", {})
 
-    # 如果没有 sample_context，使用默认值
+    # 如果 sample_context 为空或缺少 sample，占位符，尝试从 workflow_snapshot.metadata 中推断
+    if not sample_context or not sample_context.get("sample"):
+        sample_name = None
+        samples_field = metadata.get("samples")
+        if isinstance(samples_field, list) and samples_field:
+            sample_name = str(samples_field[0])
+        else:
+            single_sample = metadata.get("sample")
+            if isinstance(single_sample, str) and single_sample:
+                sample_name = single_sample
+        if sample_name:
+            sample_context = {**sample_context, "sample": sample_name}
+
+    # 如果仍然没有 sample_context，使用默认值
     if not sample_context:
         sample_context = {"sample": "default"}
 
@@ -301,10 +363,13 @@ def resolve_node_outputs(
 
         # 获取端口信息
         pattern_info = patterns[idx] if idx < len(patterns) else {}
-        port_id = pattern_info.get("handle", pattern_info.get("id", f"port_{idx}"))
-        data_type = pattern_info.get("pattern", "").split(".")[-1] if pattern_info.get("pattern") else ""
+        output_port_id = pattern_info.get("handle", pattern_info.get("id", f"port_{idx}"))
+        data_type = pattern_info.get("data_type") or (
+            pattern_info.get("pattern", "").split(".")[-1] if pattern_info.get("pattern") else ""
+        )
+        output_schema = pattern_info.get("schema", [])
 
-        logger.info(f"  - Port ID: {port_id}")
+        logger.info(f"  - Port ID: {output_port_id}")
         logger.info(f"  - Data type: {data_type}")
 
         # 判断是否可解析
@@ -315,8 +380,9 @@ def resolve_node_outputs(
         logger.info(f"  - Parseable: {parseable} (in TABULAR_EXTENSIONS: {extension in TABULAR_EXTENSIONS})")
 
         output_entry = {
-            "port_id": port_id,
+            "port_id": output_port_id,
             "data_type": data_type,
+            "schema": output_schema,
             "file_name": file_name,
             "file_path": str(file_path),
             "relative_path": str(file_path.relative_to(workspace_path)) if file_exists else str(file_path),
@@ -340,8 +406,13 @@ def resolve_node_outputs(
 
         outputs.append(output_entry)
 
+    # Filter by port_id if specified
+    if requested_port_id:
+        outputs = [o for o in outputs if o["port_id"] == requested_port_id]
+
     return {
         "execution_id": execution_id,
         "node_id": node_id,
+        "port_id": requested_port_id,
         "outputs": outputs
     }

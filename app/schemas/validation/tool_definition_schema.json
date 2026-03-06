@@ -147,8 +147,30 @@
     "outputPort": {
       "type": "object",
       "required": [
-        "id",
-        "pattern"
+        "id"
+      ],
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "portKind": {
+                "enum": [
+                  "state-in",
+                  "state-out"
+                ]
+              }
+            },
+            "required": [
+              "portKind"
+            ]
+          },
+          "then": {},
+          "else": {
+            "required": [
+              "pattern"
+            ]
+          }
+        }
       ],
       "properties": {
         "id": {
@@ -177,6 +199,15 @@
             "type": "string"
           },
           "description": "List of provided data types"
+        },
+        "portKind": {
+          "type": "string",
+          "enum": [
+            "data",
+            "state-in",
+            "state-out"
+          ],
+          "description": "Port role for state/data routing"
         },
         "description": {
           "type": "string",

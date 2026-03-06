@@ -33,6 +33,7 @@
         "id": "data_out",
         "name": "Filtered Data",
         "dataType": "table",
+        "pattern": "{sample}_filtered.tsv",
         "required": false,
         "description": "Filtered table emitted to downstream nodes",
         "portKind": "data",

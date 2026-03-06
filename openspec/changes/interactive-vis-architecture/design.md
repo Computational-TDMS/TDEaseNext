@@ -1,71 +1,58 @@
-# Design: Unified Architecture for Interactive Workflow Visualization
+# Design: Unified Architecture for Interactive Workflow Visualization (v2)
 
-## Overview
+## 1. Port-Aware Data Infrastructure
 
-This design addresses the friction between backend file-level execution and frontend column-level interactive visualizations. To satisfy the complex interrogation workflows (e.g., cross-filtering from MS1 features to MS2 spectra and PrSM mapping), we are introducing a strict architectural separation:
+To resolve the "Missing Data" issue, we are formalizing the Data Context. Interactive nodes SHALL no longer guess their input files based on the upstream node ID alone.
 
-1.  **Compute Nodes**: Responsible for backend execution. Their ports exclusively pass `data/file` objects (e.g., `.mzML`, `.ms1ft`).
-2.  **View Nodes (Interactive)**: Placed on the same canvas but do NOT execute. They accept File-level inputs and "awaken" when data is available. Column mapping is pushed entirely into an **Internal Configuration Panel** within the node, rather than cluttering the canvas with column-level edge wiring.
+### Data Addressing Protocol
+The `VisualizationStore` and `NodeDataAccess API` SHALL use a triplet-based addressing scheme:
+`DataAddress = { nodeId: string, portId: string, executionId: string }`
 
-These nodes communicate their interactive state (e.g., a user's brush selection) over a frontend **Semantic Event Bus** using `state/selection` edges.
-
-## Rationale / Trade-offs
-
-*   **Why not column-level ports on the Canvas?** While creating `data/column` output ports for every column (Mass, RT, Intensity, etc.) gives ultimate flexibility, it causes extreme visual clutter on the canvas for complex tools like MSPathFinder that output dozens of columns. It also breaks the paradigm of "File Flow", making the graph difficult to parse at a high level.
-*   **Why Internal Configuration Panels?** By retaining File-level connections on the main canvas (`promex` -> `featuremap_viewer`), we maintain high-level lineage. The detailed mapping (X Axis = RT, Y Axis = Mass) becomes an internal concern of the `featuremap_viewer`, manageable via a clean property panel. Since we know the schema of most Bioinformatics outputs, we can auto-populate these mapping dropdowns.
-*   **Why a Semantic Event Bus?** Cross-filtering requires passing transient row IDs or criteria (e.g., "Filter Table to show only these 5 selected MS1 features"). Passing huge raw subsets between nodes is highly inefficient. Passing `state/selection_ids` allows downstream nodes to quickly query the `NodeDataAccess API` to render their specific view of the *same* underlying data or related HTML fragments.
-
-## Architecture
-
-### 1. Node Classes and State Edges
-
-The VueFlow canvas will render two visually distinct layers of connections:
-
-#### A. Data Pipeline (File Edges)
-*   Represent the physical lineage of files.
-*   Connections like: `topfd_1[ms1feature]` -> `featuremap_1[input_file]`.
-*   These connections fuel the `NodeDataAccess API`. Once `topfd_1` completes, `featuremap_1` triggers a data fetch.
-
-#### B. State Pipeline (Semantic State Edges)
-*   Represent the flow of user interaction.
-*   Connections like: `featuremap_1[selection]` -> `spectrum_1[selection_in]`.
-*   When a user brushes the FeatureMap, an event containing the row IDs is emitted over this edge.
-
-### 2. The Internal Configuration Panel
-
-Interactive nodes (like `InteractiveNode.vue`) will be augmented to read the schema of their connected input files.
-
-1.  **Schema Declaration**: Compute tools will declare their known column schemas in their JSON definitions.
-    ```json
-    "outputs": [
-      {
-        "id": "ms1feature",
-        "dataType": "feature",
-        "schema": [
-          { "id": "Mass", "type": "number" },
-          { "id": "RT", "type": "number" }
-        ]
-      }
-    ]
+1.  **Canvas Edges**: Edges from Compute nodes to View nodes SHALL store the `source.portId`.
+2.  **API Update**: The backend `/api/nodes/{node_id}/data` endpoint SHALL support an optional `port_id` query parameter.
+3.  **Client Logic**:
+    ```typescript
+    // New resolution pattern
+    const sourceNodeId = edge.source.nodeId;
+    const sourcePortId = edge.source.portId;
+    const data = await store.loadNodeData(nodeId, executionId, sourceNodeId, sourcePortId);
     ```
-2.  **Panel Rendering**: When the user opens the View Node's configuration panel, it uses the incoming file's `schema` to populate a dropdown. If no schema is predefined, the node will dynamically fetch the file headers via the `/data` API upon execution completion.
-3.  **Default Mapping**: To save setup time, View Node tool definitions can declare a `defaultMapping` (e.g., `featuremap_viewer.json` dictates that X maps to `RT`, Y maps to `Mass`).
 
-### 3. Cross-Filtering Execution Flow
+## 2. Vis-Interaction Infrastructure (Tiered Architecture)
 
-**Scenario: User selects features in MS1, mapping to MS2 HTML Views**
+We are refactoring the current monolithic `InteractiveNode.vue` into a decoupled infrastructure:
 
-1.  **User Action**: The `FeatureMapViewer` widget records a brush selection.
-2.  **Emission**: The widget emits a Vue event containing `selectedRowIndices`.
-3.  **State Bus**: The `StateBus` intercepts this and identifies all outgoing `state/selection_ids` edges connected to the node.
-4.  **Propagation**: The indices are delivered to the connected `SpectrumViewer` and the new `HtmlViewer` node.
-5.  **Re-rendering**:
-    *   The `SpectrumViewer` filters its internal data to highlight the matching M/Z peaks.
-    *   The `HtmlViewer` queries the TopPIC `_html` output endpoint using the selected IDs, fetching and rendering the specific PrSM visualization.
+### Tier 1: Canvas Wrapper (`InteractiveNode.vue`)
+- **Responsibility**: VueFlow integration, resizing handles, state edge connections.
+- **Visuals**: Clean, minimal border. Distinct styling for "Unconfigured" vs "Data Ready".
 
-## Technical Requirements
+### Tier 2: Visualization Container (`VisContainer.vue`)
+- **Responsibility**: Common UI scaffolding and data lifecycle.
+- **"Headless" Mode**: The container SHALL detect if it is inside a VueFlow node or a standalone Page. When standalone, it hides specific canvas-sync logic but remains connected to the `VisualizationStore` and `StateBus`.
 
-1.  **Tool Definition Extensions**: Update `config/tools/*.json` to support output `schema` and input `defaultMapping`.
-2.  **VueFlow Enhancements**: Add custom edge styles for `state/selection` to visually differentiate them from data flow.
-3.  **InteractiveNode.vue Refactor**: Implement the Internal Configuration Panel with dynamic schema loading and mapping interface.
-4.  **NodeDataAccess API Cache**: Ensure the frontend aggressively caches file data to support zero-latency cross-filtering without redundantly hitting the backend when State Edges trigger re-renders.
+### Tier 3: Atomic Viewers
+- **Responsibility**: Pure data rendering.
+- **Example**: `BaseScatterPlot.vue`, `BaseTableView.vue`.
+- **Interface**: Receives `columns[]` and `rows[]`. Emits `selection: indices[]`.
+
+## 3. Bimodal Canvas Layout (UI/UX)
+
+The canvas SHALL visually distinguish between the "Physical Data Flow" and the "Logical Interaction Flow".
+
+### Pipeline Distinction
+| Feature | Physical (Data) Edge | Logical (Interaction) Edge |
+|---------|---------------------|---------------------------|
+| **Visual Style** | Solid Blue Line | Dashed Orange Line |
+| **Animation** | Slow Pulse (Static) | Fast Flow Pulse (on Interaction) |
+| **Source Type** | Compute Node Port | View Node State Port |
+| **Target Type** | View Node Data Port | View Node State Input |
+
+### Interaction Feedback
+When a user interacts with a "Primary" viewer (e.g., FeatureMap), the outgoing Dashed edges SHALL briefly animate a "data packet" flow to show the selection state propagating to downstream viewers.
+
+## 4. Requirement Updates
+
+1.  **State Persistence**: All axis mappings and viewport settings SHALL be persisted in the `workflow.nodes[].data.visualizationConfig` object.
+2.  **Aggregation Logic**: If an interactive node is connected to multiple data sources, it SHALL provide a tabbed interface or a multi-file merge logic in the Config Panel.
+3.  **Schema Caching**: Upstream tool schemas SHALL be cached at the workspace level to allow instant Config Panel rendering before execution completion.
+

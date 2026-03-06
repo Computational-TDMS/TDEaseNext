@@ -30,6 +30,8 @@ async def get_tool_schemas() -> Dict[str, Any]:
     """Return tool registry schemas for frontend rendering"""
     try:
         reg = get_tool_registry()
+        # Always refresh to pick up tool/schema edits during development.
+        reg.reload()
         return {"registry": reg.list_tools()}
     except Exception as e:
         logger.error(f"Failed to get tool schemas: {e}")
