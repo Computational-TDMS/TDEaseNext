@@ -1,0 +1,436 @@
+/**
+ * Catppuccin Theme for Element Plus
+ * Overrides Element Plus CSS variables to match Catppuccin color palette
+ */
+
+/* ===== Icon Colors ===== */
+.el-icon {
+  color: var(--icon-primary);
+}
+
+.el-button .el-icon {
+  color: inherit;
+}
+
+.el-button--default .el-icon {
+  color: var(--icon-secondary);
+}
+
+.el-button--primary .el-icon {
+  color: var(--icon-primary);
+}
+
+.el-button--success .el-icon {
+  color: var(--icon-success);
+}
+
+.el-button--warning .el-icon {
+  color: var(--icon-warning);
+}
+
+.el-button--danger .el-icon {
+  color: var(--icon-error);
+}
+
+.el-button--info .el-icon {
+  color: var(--icon-info);
+}
+
+.el-button--text .el-icon {
+  color: var(--icon-secondary);
+}
+
+.el-button--text:hover .el-icon {
+  color: var(--icon-primary);
+}
+
+:root {
+  /* Colors - map Element Plus semantic colors to Catppuccin */
+  --el-color-primary: var(--ctp-mauve);
+  --el-color-primary-light-3: color-mix(in srgb, var(--ctp-mauve) 80%, white);
+  --el-color-primary-light-5: color-mix(in srgb, var(--ctp-mauve) 60%, white);
+  --el-color-primary-light-7: color-mix(in srgb, var(--ctp-mauve) 40%, white);
+  --el-color-primary-light-8: color-mix(in srgb, var(--ctp-mauve) 30%, white);
+  --el-color-primary-light-9: color-mix(in srgb, var(--ctp-mauve) 20%, white);
+  --el-color-primary-dark-2: color-mix(in srgb, var(--ctp-mauve) 80%, black);
+
+  --el-color-success: var(--ctp-green);
+  --el-color-success-light-3: color-mix(in srgb, var(--ctp-green) 80%, white);
+  --el-color-success-light-5: color-mix(in srgb, var(--ctp-green) 60%, white);
+  --el-color-success-light-7: color-mix(in srgb, var(--ctp-green) 40%, white);
+  --el-color-success-light-8: color-mix(in srgb, var(--ctp-green) 30%, white);
+  --el-color-success-light-9: color-mix(in srgb, var(--ctp-green) 20%, white);
+  --el-color-success-dark-2: color-mix(in srgb, var(--ctp-green) 80%, black);
+
+  --el-color-warning: var(--ctp-yellow);
+  --el-color-warning-light-3: color-mix(in srgb, var(--ctp-yellow) 80%, white);
+  --el-color-warning-light-5: color-mix(in srgb, var(--ctp-yellow) 60%, white);
+  --el-color-warning-light-7: color-mix(in srgb, var(--ctp-yellow) 40%, white);
+  --el-color-warning-light-8: color-mix(in srgb, var(--ctp-yellow) 30%, white);
+  --el-color-warning-light-9: color-mix(in srgb, var(--ctp-yellow) 20%, white);
+  --el-color-warning-dark-2: color-mix(in srgb, var(--ctp-yellow) 80%, black);
+
+  --el-color-danger: var(--ctp-red);
+  --el-color-danger-light-3: color-mix(in srgb, var(--ctp-red) 80%, white);
+  --el-color-danger-light-5: color-mix(in srgb, var(--ctp-red) 60%, white);
+  --el-color-danger-light-7: color-mix(in srgb, var(--ctp-red) 40%, white);
+  --el-color-danger-light-8: color-mix(in srgb, var(--ctp-red) 30%, white);
+  --el-color-danger-light-9: color-mix(in srgb, var(--ctp-red) 20%, white);
+  --el-color-danger-dark-2: color-mix(in srgb, var(--ctp-red) 80%, black);
+
+  --el-color-error: var(--ctp-red);
+  --el-color-error-light-3: color-mix(in srgb, var(--ctp-red) 80%, white);
+  --el-color-error-light-5: color-mix(in srgb, var(--ctp-red) 60%, white);
+  --el-color-error-light-7: color-mix(in srgb, var(--ctp-red) 40%, white);
+  --el-color-error-light-8: color-mix(in srgb, var(--ctp-red) 30%, white);
+  --el-color-error-light-9: color-mix(in srgb, var(--ctp-red) 20%, white);
+  --el-color-error-dark-2: color-mix(in srgb, var(--ctp-red) 80%, black);
+
+  --el-color-info: var(--ctp-sky);
+  --el-color-info-light-3: color-mix(in srgb, var(--ctp-sky) 80%, white);
+  --el-color-info-light-5: color-mix(in srgb, var(--ctp-sky) 60%, white);
+  --el-color-info-light-7: color-mix(in srgb, var(--ctp-sky) 40%, white);
+  --el-color-info-light-8: color-mix(in srgb, var(--ctp-sky) 30%, white);
+  --el-color-info-light-9: color-mix(in srgb, var(--ctp-sky) 20%, white);
+  --el-color-info-dark-2: color-mix(in srgb, var(--ctp-sky) 80%, black);
+
+  /* Background */
+  --el-bg-color: var(--ctp-base);
+  --el-bg-color-page: var(--ctp-base);
+  --el-bg-color-overlay: var(--ctp-mantle);
+
+  /* Text */
+  --el-text-color-primary: var(--ctp-text);
+  --el-text-color-regular: var(--ctp-text);
+  --el-text-color-secondary: var(--ctp-subtext1);
+  --el-text-color-placeholder: var(--ctp-overlay1);
+  --el-text-color-disabled: var(--ctp-overlay0);
+
+  /* Border */
+  --el-border-color: var(--ctp-surface0);
+  --el-border-color-light: var(--ctp-surface1);
+  --el-border-color-lighter: var(--ctp-surface2);
+  --el-border-color-extra-light: var(--ctp-overlay0);
+  --el-border-color-dark: var(--ctp-surface0);
+  --el-border-color-darker: var(--ctp-crust);
+
+  /* Fill */
+  --el-fill-color: var(--ctp-surface0);
+  --el-fill-color-light: var(--ctp-surface1);
+  --el-fill-color-lighter: var(--ctp-surface2);
+  --el-fill-color-extra-light: var(--ctp-overlay0);
+  --el-fill-color-dark: var(--ctp-mantle);
+  --el-fill-color-darker: var(--ctp-crust);
+
+  /* Box Shadow */
+  --el-box-shadow: 0 12px 32px 4px rgba(0, 0, 0, 0.04),
+    0 8px 20px rgba(0, 0, 0, 0.08);
+  --el-box-shadow-light: 0 0 12px rgba(0, 0, 0, 0.12);
+  --el-box-shadow-lighter: 0 0 6px rgba(0, 0, 0, 0.12);
+  --el-box-shadow-dark: 0 16px 48px 16px rgba(0, 0, 0, 0.24),
+    0 12px 32px rgba(0, 0, 0, 0.24);
+
+  /* Border Radius */
+  --el-border-radius-base: 8px;
+  --el-border-radius-small: 6px;
+  --el-border-radius-round: 20px;
+  --el-border-radius-circle: 100%;
+
+  /* Font */
+  --el-font-size-extra-large: 20px;
+  --el-font-size-large: 18px;
+  --el-font-size-medium: 16px;
+  --el-font-size-base: 14px;
+  --el-font-size-small: 13px;
+  --el-font-size-extra-small: 12px;
+
+  /* Disabled */
+  --el-disabled-bg-color: var(--ctp-surface0);
+  --el-disabled-text-color: var(--ctp-overlay0);
+  --el-disabled-border-color: var(--ctp-surface1);
+
+  /* Overlay */
+  --el-overlay-color: rgba(0, 0, 0, 0.5);
+  --el-overlay-color-light: rgba(0, 0, 0, 0.3);
+  --el-overlay-color-lighter: rgba(0, 0, 0, 0.1);
+
+  /* Mask */
+  --el-mask-color: rgba(255, 255, 255, 0.9);
+
+  /* Component specific overrides */
+}
+
+/* Button */
+.el-button {
+  border-radius: var(--el-border-radius-base);
+  font-weight: 500;
+}
+
+.el-button--primary {
+  background-color: var(--el-color-primary);
+  border-color: var(--el-color-primary);
+}
+
+.el-button--primary:hover {
+  background-color: var(--el-color-primary-light-3);
+  border-color: var(--el-color-primary-light-3);
+}
+
+/* Input */
+.el-input__wrapper {
+  border-radius: var(--el-border-radius-base);
+  background-color: var(--ctp-mantle);
+  box-shadow: 0 0 0 1px var(--ctp-surface0) inset;
+}
+
+.el-input__wrapper:hover {
+  box-shadow: 0 0 0 1px var(--ctp-surface1) inset;
+}
+
+.el-input__wrapper.is-focus {
+  box-shadow: 0 0 0 1px var(--el-color-primary) inset;
+}
+
+.el-input__inner {
+  color: var(--ctp-text);
+}
+
+/* Card */
+.el-card {
+  background-color: var(--ctp-mantle);
+  border-color: var(--ctp-surface0);
+  border-radius: var(--el-border-radius-base);
+}
+
+.el-card__header {
+  border-bottom-color: var(--ctp-surface0);
+}
+
+/* Dialog */
+.el-dialog {
+  background-color: var(--ctp-mantle);
+  border-radius: var(--el-border-radius-base);
+}
+
+.el-dialog__header {
+  border-bottom: 1px solid var(--ctp-surface0);
+  padding: 20px;
+}
+
+.el-dialog__body {
+  padding: 20px;
+}
+
+/* Menu */
+.el-menu {
+  background-color: var(--ctp-mantle);
+  border-right-color: var(--ctp-surface0);
+}
+
+.el-menu-item {
+  color: var(--ctp-subtext1);
+}
+
+.el-menu-item:hover {
+  background-color: var(--ctp-surface0);
+  color: var(--ctp-text);
+}
+
+.el-menu-item.is-active {
+  color: var(--el-color-primary);
+  background-color: var(--ctp-surface1);
+}
+
+/* Dropdown */
+.el-dropdown-menu {
+  background-color: var(--ctp-mantle);
+  border-color: var(--ctp-surface0);
+}
+
+.el-dropdown-menu__item:hover {
+  background-color: var(--ctp-surface0);
+  color: var(--ctp-text);
+}
+
+/* Table */
+.el-table {
+  background-color: var(--ctp-mantle);
+  color: var(--ctp-text);
+}
+
+.el-table th.el-table__cell {
+  background-color: var(--ctp-base);
+  color: var(--ctp-subtext1);
+}
+
+.el-table tr {
+  background-color: var(--ctp-mantle);
+}
+
+.el-table--enable-row-hover .el-table__body tr:hover > td {
+  background-color: var(--ctp-surface0);
+}
+
+.el-table td,
+.el-table th.el-table__cell {
+  border-bottom-color: var(--ctp-surface0);
+}
+
+/* Select */
+.el-select-dropdown {
+  background-color: var(--ctp-mantle);
+  border-color: var(--ctp-surface0);
+}
+
+.el-select-dropdown__item:hover {
+  background-color: var(--ctp-surface0);
+}
+
+.el-select-dropdown__item.is-selected {
+  color: var(--el-color-primary);
+  background-color: var(--ctp-surface1);
+}
+
+/* Switch */
+.el-switch.is-checked .el-switch__core {
+  background-color: var(--el-color-primary);
+  border-color: var(--el-color-primary);
+}
+
+/* Checkbox */
+.el-checkbox__input.is-checked .el-checkbox__inner {
+  background-color: var(--el-color-primary);
+  border-color: var(--el-color-primary);
+}
+
+.el-checkbox__inner {
+  background-color: var(--ctp-surface0);
+  border-color: var(--ctp-surface1);
+}
+
+/* Radio */
+.el-radio__input.is-checked .el-radio__inner {
+  background-color: var(--el-color-primary);
+  border-color: var(--el-color-primary);
+}
+
+.el-radio__inner {
+  background-color: var(--ctp-surface0);
+  border-color: var(--ctp-surface1);
+}
+
+/* Progress */
+.el-progress-bar__inner {
+  background-color: var(--el-color-primary);
+}
+
+/* Tag */
+.el-tag {
+  border-radius: var(--el-border-radius-small);
+}
+
+.el-tag--primary {
+  background-color: var(--el-color-primary-light-8);
+  border-color: var(--el-color-primary-light-7);
+  color: var(--el-color-primary);
+}
+
+/* Scrollbar */
+.el-scrollbar__thumb {
+  background-color: var(--ctp-surface1);
+  border-radius: 4px;
+}
+
+.el-scrollbar__thumb:hover {
+  background-color: var(--ctp-surface2);
+}
+
+/* Tooltip */
+.el-tooltip__popper {
+  background-color: var(--ctp-crust);
+  color: var(--ctp-text);
+}
+
+/* Popover */
+.el-popover {
+  background-color: var(--ctp-mantle);
+  border-color: var(--ctp-surface0);
+}
+
+/* Notification */
+.el-notification {
+  background-color: var(--ctp-mantle);
+  border-color: var(--ctp-surface0);
+}
+
+/* Message */
+.el-message {
+  background-color: var(--ctp-mantle);
+  border-color: var(--ctp-surface0);
+}
+
+/* Loading */
+.el-loading-mask {
+  background-color: var(--ctp-overlay0);
+}
+
+.el-loading-spinner .path {
+  stroke: var(--el-color-primary);
+}
+
+/* Tabs */
+.el-tabs__item {
+  color: var(--ctp-subtext1);
+}
+
+.el-tabs__item:hover {
+  color: var(--ctp-text);
+}
+
+.el-tabs__item.is-active {
+  color: var(--el-color-primary);
+}
+
+.el-tabs__active-bar {
+  background-color: var(--el-color-primary);
+}
+
+/* Tree */
+.el-tree {
+  background-color: transparent;
+  color: var(--ctp-text);
+}
+
+.el-tree-node__content:hover {
+  background-color: var(--ctp-surface0);
+}
+
+/* Form */
+.el-form-item__label {
+  color: var(--ctp-subtext1);
+}
+
+/* Alert */
+.el-alert {
+  border-radius: var(--el-border-radius-base);
+}
+
+.el-alert--success {
+  background-color: var(--el-color-success-light-9);
+  border-color: var(--el-color-success-light-7);
+}
+
+.el-alert--warning {
+  background-color: var(--el-color-warning-light-9);
+  border-color: var(--el-color-warning-light-7);
+}
+
+.el-alert--error {
+  background-color: var(--el-color-error-light-9);
+  border-color: var(--el-color-error-light-7);
+}
+
+.el-alert--info {
+  background-color: var(--el-color-info-light-9);
+  border-color: var(--el-color-info-light-7);
+}
