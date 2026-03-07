@@ -5,7 +5,7 @@
   "description": "PBFGen: Convert mass spectrometry data files to PBF format for Informed Proteomics",
   "executionMode": "native",
   "command": {
-    "executable": "D:\\Projects\\TDEase-Backend\\InformedProteomics_Program\\PbfGen.exe"
+    "executable": "PbfGen"
   },
   "ports": {
     "inputs": [

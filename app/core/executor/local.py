@@ -7,40 +7,82 @@ FlowEngine 原生本地执行器，使用 ShellRunner 执行命令，支持 Cond
 import asyncio
 import json
 import logging
-import platform
+import os
 import shlex
-import subprocess
+import shutil
 from pathlib import Path
 from typing import List
 
 from .base import Executor, TaskSpec
 from .command_pipeline import CommandPipeline
-from .shell_runner import run_shell
+from .errors import ExecutableNotFoundError, LaunchValidationError, WorkspaceValidationError
+from .shell_runner import run_command
 from .process_registry import process_registry
 
 logger = logging.getLogger(__name__)
+ON_WINDOWS = os.name == "nt"
 
 
-def _cmd_parts_to_shell_string(cmd_parts: List[str]) -> str:
-    """将命令参数列表转为 shell 安全字符串（正确处理含空格的参数如 JSON）"""
-    if platform.system() == "Windows":
-        return subprocess.list2cmdline(cmd_parts)
-    return shlex.join(cmd_parts)
+def split_prebuilt_command(cmd: str, *, on_windows: bool | None = None) -> List[str]:
+    if not isinstance(cmd, str) or not cmd.strip():
+        raise LaunchValidationError("Prebuilt command is empty")
+    windows_mode = ON_WINDOWS if on_windows is None else on_windows
+    parts = shlex.split(cmd, posix=not windows_mode)
+    if not parts:
+        raise LaunchValidationError("Prebuilt command has no executable")
+    return parts
 
 
-def _run_shell(
+def _resolve_executable(executable: str, workdir: Path) -> str:
+    if not executable:
+        raise ExecutableNotFoundError("Executable is empty")
+
+    candidate = Path(executable)
+    if candidate.is_absolute():
+        if not candidate.exists():
+            raise ExecutableNotFoundError(f"Executable not found: {candidate}")
+        return str(candidate)
+
+    has_path_sep = (os.sep in executable) or (os.altsep and os.altsep in executable)
+    if has_path_sep:
+        resolved = (workdir / candidate).resolve()
+        if not resolved.exists():
+            raise ExecutableNotFoundError(f"Executable not found: {resolved}")
+        return str(resolved)
+
+    resolved_from_path = shutil.which(executable)
+    if not resolved_from_path:
+        raise ExecutableNotFoundError(f"Executable not found in PATH: {executable}")
+    return resolved_from_path
+
+
+def _validate_launch_contract(cmd_parts: List[str], workdir: Path) -> List[str]:
+    if not cmd_parts:
+        raise LaunchValidationError("No command provided")
+
+    raw_workdir = Path(workdir)
+    if ".." in raw_workdir.parts:
+        raise WorkspaceValidationError(f"Workspace path traversal is not allowed: {workdir}")
+
+    resolved_workdir = raw_workdir.resolve()
+    if not resolved_workdir.exists() or not resolved_workdir.is_dir():
+        raise WorkspaceValidationError(f"Workspace directory does not exist: {workdir}")
+
+    validated = list(cmd_parts)
+    validated[0] = _resolve_executable(validated[0], resolved_workdir)
+    return validated
+
+
+def _run_command(
     cmd_parts: List[str],
     workdir: Path,
     conda_env: str = None,
     log_callback=None,
     task_id: str = "",
 ) -> None:
-    """同步执行 Shell 命令，支持 Conda，可选 log_callback 捕获 stdout/stderr"""
-    if len(cmd_parts) == 1 and isinstance(cmd_parts[0], str):
-        cmd_str = cmd_parts[0]
-    else:
-        cmd_str = _cmd_parts_to_shell_string(cmd_parts)
-    run_shell(cmd=cmd_str, workdir=workdir, conda_env=conda_env, log_callback=log_callback, task_id=task_id)
+    """同步执行命令参数向量，默认 shell=False。"""
+    validated_cmd = _validate_launch_contract(cmd_parts, workdir)
+    run_command(args=validated_cmd, workdir=workdir, conda_env=conda_env, log_callback=log_callback, task_id=task_id)
 
 
 class LocalExecutor(Executor):
@@ -53,8 +95,8 @@ class LocalExecutor(Executor):
         tool_info = self.tools_registry.get(spec.tool_id, {})
 
         if spec.cmd:
-            # Use pre-built command if provided
-            cmd_parts = [spec.cmd]
+            # Legacy path: parse string into argv, then run in secure launch path.
+            cmd_parts = split_prebuilt_command(spec.cmd)
             trace_payload = {
                 "tool_id": spec.tool_id,
                 "execution_mode": "prebuilt",
@@ -109,7 +151,7 @@ class LocalExecutor(Executor):
             except Exception:
                 logger.exception("[LocalExecutor] Failed to emit command trace")
         task_id = getattr(spec, "task_id", "")
-        await asyncio.to_thread(_run_shell, cmd_parts, spec.workspace_path, conda, log_cb, task_id)
+        await asyncio.to_thread(_run_command, cmd_parts, spec.workspace_path, conda, log_cb, task_id)
 
     async def cancel(self, task_id: str) -> bool:
         """

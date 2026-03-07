@@ -166,3 +166,11 @@ tests/fixtures/tmp_pytest/
 
 # UV
 .uv/
+
+
+
+.pytest-run/
+
+.pytest_cache
+
+

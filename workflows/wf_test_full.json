@@ -166,7 +166,8 @@
           "min_scan_number": "1",
           "thread_number": "12",
           "env_cnn_cutoff": "0.0",
-          "split_intensity_ratio": "2.5"
+          "split_intensity_ratio": "2.5",
+          "skip_html_folder": false
         }
       },
       "inputs": [
@@ -286,7 +287,8 @@
           "proteoform_cutoff_value": "0.01",
           "miscore_threshold": "0.15",
           "thread_number": "12",
-          "num_combined_spectra": "1"
+          "num_combined_spectra": "1",
+          "skip_html_folder": false
         }
       },
       "inputs": [
@@ -571,6 +573,170 @@
           "semanticType": "state/selection_ids"
         }
       ]
+    },
+    {
+      "id": "prsm_bundle_builder_1",
+      "type": "prsm_bundle_builder",
+      "position": {
+        "x": 1060,
+        "y": 340
+      },
+      "data": {
+        "label": "PrSM Bundle Builder"
+      },
+      "nodeConfig": {
+        "toolId": "prsm_bundle_builder",
+        "paramValues": {
+          "ms2_topn": "120"
+        }
+      },
+      "inputs": [
+        {
+          "id": "prsm_single",
+          "name": "TopPIC PrSM (single)",
+          "dataType": "tsv",
+          "required": true
+        },
+        {
+          "id": "ms2_msalign",
+          "name": "TopFD MS2 msalign",
+          "dataType": "msalign",
+          "required": true
+        },
+        {
+          "id": "ms2_feature",
+          "name": "TopFD MS2 feature (optional)",
+          "dataType": "feature",
+          "required": false
+        }
+      ],
+      "outputs": [
+        {
+          "id": "prsm_table_clean",
+          "name": "Clean PrSM Table",
+          "dataType": "tsv"
+        },
+        {
+          "id": "prsm_bundle",
+          "name": "PrSM Bundle",
+          "dataType": "tsv"
+        }
+      ]
+    },
+    {
+      "id": "prsm_table_1",
+      "type": "table_viewer",
+      "executionMode": "interactive",
+      "position": {
+        "x": 1300,
+        "y": 340
+      },
+      "data": {
+        "label": "TopMSV PrSM Table"
+      },
+      "visualizationConfig": {
+        "type": "table",
+        "config": {
+          "selectionKeyField": "Prsm ID"
+        }
+      },
+      "nodeConfig": {
+        "toolId": "table_viewer",
+        "paramValues": {}
+      },
+      "inputs": [
+        {
+          "id": "data_file",
+          "name": "Data File",
+          "dataType": "tsv",
+          "required": true,
+          "description": "PrSM clean table output"
+        },
+        {
+          "id": "selection_in",
+          "name": "Selection In",
+          "dataType": "selection",
+          "required": false,
+          "portKind": "state-in",
+          "semanticType": "state/selection_ids"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "selection",
+          "name": "Selection",
+          "dataType": "selection",
+          "required": false,
+          "portKind": "state-out",
+          "semanticType": "state/selection_ids"
+        }
+      ]
+    },
+    {
+      "id": "ms2_viewer_1",
+      "type": "topmsv_ms2_viewer",
+      "executionMode": "interactive",
+      "position": {
+        "x": 1540,
+        "y": 260
+      },
+      "data": {
+        "label": "TopMSV MS2 Viewer"
+      },
+      "nodeConfig": {
+        "toolId": "topmsv_ms2_viewer",
+        "paramValues": {}
+      },
+      "inputs": [
+        {
+          "id": "html_folder",
+          "name": "TopPIC HTML Folder",
+          "dataType": "html",
+          "required": true
+        },
+        {
+          "id": "selection_in",
+          "name": "Selection In",
+          "dataType": "selection",
+          "required": false,
+          "portKind": "state-in",
+          "semanticType": "state/selection_ids"
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "id": "seq_viewer_1",
+      "type": "topmsv_sequence_viewer",
+      "executionMode": "interactive",
+      "position": {
+        "x": 1540,
+        "y": 440
+      },
+      "data": {
+        "label": "TopMSV Sequence Viewer"
+      },
+      "nodeConfig": {
+        "toolId": "topmsv_sequence_viewer",
+        "paramValues": {}
+      },
+      "inputs": [
+        {
+          "id": "html_folder",
+          "name": "TopPIC HTML Folder",
+          "dataType": "html",
+          "required": true
+        },
+        {
+          "id": "selection_in",
+          "name": "Selection In",
+          "dataType": "selection",
+          "required": false,
+          "portKind": "state-in",
+          "semanticType": "state/selection_ids"
+        }
+      ],
+      "outputs": []
     }
   ],
   "edges": [
@@ -676,7 +842,8 @@
       "target": "spectrum_1",
       "sourceHandle": "output-selection_out",
       "targetHandle": "input-selection_in",
-      "connectionKind": "data"
+      "connectionKind": "state",
+      "semanticType": "state/selection_ids"
     },
     {
       "id": "e_topfd_spectrum2",
@@ -692,7 +859,74 @@
       "target": "spectrum_2",
       "sourceHandle": "output-selection_out",
       "targetHandle": "input-selection_in",
+      "connectionKind": "state",
+      "semanticType": "state/selection_ids"
+    },
+    {
+      "id": "e_toppic_prsm_bundle",
+      "source": "toppic_1",
+      "target": "prsm_bundle_builder_1",
+      "sourceHandle": "output-prsm_single",
+      "targetHandle": "input-prsm_single",
       "connectionKind": "data"
+    },
+    {
+      "id": "e_topfd_msalign_bundle",
+      "source": "topfd_1",
+      "target": "prsm_bundle_builder_1",
+      "sourceHandle": "output-ms2_msalign",
+      "targetHandle": "input-ms2_msalign",
+      "connectionKind": "data"
+    },
+    {
+      "id": "e_topfd_ms2feature_bundle",
+      "source": "topfd_1",
+      "target": "prsm_bundle_builder_1",
+      "sourceHandle": "output-ms2feature",
+      "targetHandle": "input-ms2_feature",
+      "connectionKind": "data"
+    },
+    {
+      "id": "e_bundle_prsm_table",
+      "source": "prsm_bundle_builder_1",
+      "target": "prsm_table_1",
+      "sourceHandle": "output-prsm_table_clean",
+      "targetHandle": "input-data_file",
+      "connectionKind": "data"
+    },
+    {
+      "id": "e_bundle_ms2_viewer",
+      "source": "toppic_1",
+      "target": "ms2_viewer_1",
+      "sourceHandle": "output-html_folder",
+      "targetHandle": "input-html_folder",
+      "connectionKind": "data"
+    },
+    {
+      "id": "e_bundle_seq_viewer",
+      "source": "toppic_1",
+      "target": "seq_viewer_1",
+      "sourceHandle": "output-html_folder",
+      "targetHandle": "input-html_folder",
+      "connectionKind": "data"
+    },
+    {
+      "id": "e_prsm_table_ms2_selection",
+      "source": "prsm_table_1",
+      "target": "ms2_viewer_1",
+      "sourceHandle": "output-selection",
+      "targetHandle": "input-selection_in",
+      "connectionKind": "state",
+      "semanticType": "state/selection_ids"
+    },
+    {
+      "id": "e_prsm_table_seq_selection",
+      "source": "prsm_table_1",
+      "target": "seq_viewer_1",
+      "sourceHandle": "output-selection",
+      "targetHandle": "input-selection_in",
+      "connectionKind": "state",
+      "semanticType": "state/selection_ids"
     }
   ],
   "connections": [],

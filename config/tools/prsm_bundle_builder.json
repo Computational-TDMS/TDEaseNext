@@ -1,0 +1,142 @@
+{
+  "id": "prsm_bundle_builder",
+  "name": "PrSM Bundle Builder",
+  "version": "1.0.0",
+  "description": "Normalize TopPIC PrSM TSV and TopFD MS2 msalign into TopMSV-ready tabular outputs",
+  "executionMode": "script",
+  "command": {
+    "executable": "src/nodes/prsm_bundle_builder.py",
+    "interpreter": "python"
+  },
+  "ports": {
+    "inputs": [
+      {
+        "id": "prsm_single",
+        "name": "TopPIC PrSM (single)",
+        "dataType": "tsv",
+        "required": true,
+        "accept": [
+          "tsv"
+        ],
+        "flag": "--prsm-single"
+      },
+      {
+        "id": "ms2_msalign",
+        "name": "TopFD MS2 msalign",
+        "dataType": "msalign",
+        "required": true,
+        "accept": [
+          "msalign"
+        ],
+        "flag": "--ms2-msalign"
+      },
+      {
+        "id": "ms2_feature",
+        "name": "TopFD MS2 feature (optional)",
+        "dataType": "feature",
+        "required": false,
+        "accept": [
+          "feature"
+        ],
+        "flag": "--ms2-feature"
+      }
+    ],
+    "outputs": [
+      {
+        "id": "prsm_table_clean",
+        "name": "Clean PrSM Table",
+        "dataType": "tsv",
+        "pattern": "prsm_table_clean.tsv",
+        "handle": "prsm_table_clean",
+        "provides": [
+          "tsv",
+          "prsm_table"
+        ],
+        "schema": [
+          {
+            "name": "Prsm ID",
+            "type": "string",
+            "description": "Stable PrSM identifier"
+          },
+          {
+            "name": "Spectrum ID",
+            "type": "string",
+            "description": "TopFD spectrum identifier"
+          },
+          {
+            "name": "Scan(s)",
+            "type": "string",
+            "description": "Scan index in source file"
+          }
+        ]
+      },
+      {
+        "id": "prsm_bundle",
+        "name": "PrSM Bundle",
+        "dataType": "tsv",
+        "pattern": "prsm_bundle.tsv",
+        "handle": "prsm_bundle",
+        "provides": [
+          "tsv",
+          "prsm_bundle"
+        ],
+        "schema": [
+          {
+            "name": "prsm_id",
+            "type": "string",
+            "description": "Stable PrSM identifier for selection routing"
+          },
+          {
+            "name": "mapping_status",
+            "type": "string",
+            "description": "Spectrum mapping result"
+          },
+          {
+            "name": "match_fragment_num",
+            "type": "number",
+            "description": "Matched fragment count reported by TopPIC (if available)"
+          },
+          {
+            "name": "norm_match_fragment_num",
+            "type": "number",
+            "description": "Normalized matched fragment count reported by TopPIC (if available)"
+          },
+          {
+            "name": "proteo_match_seq",
+            "type": "string",
+            "description": "TopPIC proteoform sequence string with localized shifts"
+          },
+          {
+            "name": "fragment_breakpoints_json",
+            "type": "string",
+            "description": "JSON array of cleavage breakpoint positions (1-based, break-after index)"
+          },
+          {
+            "name": "cleavage_annotations_json",
+            "type": "string",
+            "description": "JSON array of cleavage annotations (position/exist_n_ion/exist_c_ion/matched_peaks)"
+          },
+          {
+            "name": "ms2_peaks_json",
+            "type": "string",
+            "description": "Serialized MS2 peaks payload"
+          }
+        ]
+      }
+    ]
+  },
+  "parameters": {
+    "ms2_topn": {
+      "flag": "--ms2-topn",
+      "type": "value",
+      "label": "MS2 Peak TopN",
+      "description": "Keep top N MS2 peaks ranked by intensity for each spectrum",
+      "group": "basic",
+      "default": "120"
+    }
+  },
+  "output": {
+    "flagSupported": true,
+    "flag": "--output-dir"
+  }
+}

@@ -55,13 +55,15 @@ class ExecutionManager:
         execution_id: str,
         workspace: str,
         workflow_id: Optional[str] = None,
+        persist: bool = True,
     ) -> Execution:
         ex = Execution(execution_id, workspace)
         self.executions[execution_id] = ex
-        try:
-            self.store.create(execution_id, workflow_id or "unknown", workspace)
-        except Exception as e:
-            raise
+        if persist:
+            try:
+                self.store.create(execution_id, workflow_id or "unknown", workspace)
+            except Exception as e:
+                raise
         return ex
 
     def get(self, execution_id: str) -> Optional[Execution]:

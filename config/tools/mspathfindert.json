@@ -5,7 +5,7 @@
   "description": "MSPathFinderT: Database search for top-down LC-MS/MS datasets - finds proteoform spectrum matches (PsSMs)",
   "executionMode": "native",
   "command": {
-    "executable": "D:\\Projects\\TDEase-Backend\\InformedProteomics_Program\\MSPathFinderT.exe"
+    "executable": "MSPathFinderT"
   },
   "ports": {
     "inputs": [

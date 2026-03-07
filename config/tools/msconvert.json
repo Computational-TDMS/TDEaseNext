@@ -5,7 +5,7 @@
   "description": "MSConvert: Convert mass spectrometry data formats (ProteoWizard)",
   "executionMode": "native",
   "command": {
-    "executable": "C:\\Users\\ray\\AppData\\Local\\Apps\\ProteoWizard 3.0.26015.d85166d 64-bit\\msconvert.exe"
+    "executable": "msconvert"
   },
   "ports": {
     "inputs": [

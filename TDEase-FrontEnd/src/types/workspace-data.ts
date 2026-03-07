@@ -43,10 +43,14 @@ export interface OutputEntry {
   file_name: string;
   /** File path relative to workspace */
   file_path: string;
+  /** Relative path from execution workspace (when available) */
+  relative_path?: string;
   /** File size in bytes */
   file_size: number;
   /** Whether the file exists on disk */
   exists: boolean;
+  /** Whether the output path is a directory */
+  is_directory?: boolean;
   /** Whether the file can be parsed as tabular data */
   parseable: boolean;
   /** Optional schema for this output port */
@@ -158,4 +162,109 @@ export interface GetFileContentParams {
   workspace_id: string;
   path: string;
   max_rows?: number;
+}
+
+export interface TopMSVSequenceModification {
+  kind: string;
+  label: string;
+  ptm_type: string;
+  left_position: number | null;
+  right_position: number | null;
+  annotation: string;
+  mono_mass: number | null;
+  unimod: string;
+}
+
+export interface TopMSVIon {
+  ion_type: string;
+  ion_position: number | null;
+  display_position: number | null;
+  theoretical_mass: number | null;
+  mass_error: number | null;
+  ppm: number | null;
+  label: string;
+}
+
+export interface TopMSVMatchedPeak {
+  peak_id: number | null;
+  spec_id: number | null;
+  monoisotopic_mass: number | null;
+  monoisotopic_mz: number | null;
+  intensity: number | null;
+  charge: number | null;
+  matched_ion_count: number;
+  matched_ions: TopMSVIon[];
+  matched_ion_labels: string;
+}
+
+export interface TopMSVRawPeak {
+  index: number;
+  mz: number;
+  intensity: number;
+}
+
+export interface TopMSVEnvelopeSummary {
+  id: number | null;
+  mono_mass: number | null;
+  charge: number | null;
+  peak_count: number;
+}
+
+export interface TopMSVPrsmDataResponse {
+  execution_id?: string | null;
+  workflow_id?: string;
+  node_id: string;
+  port_id: string;
+  prsm_id: number;
+  resolution?: Record<string, unknown>;
+  protein_accession: string;
+  protein_description: string;
+  source: {
+    html_root: string;
+    prsm_file: string;
+    spectrum_file: string | null;
+  };
+  ms_header: {
+    spectrum_file_name: string;
+    ms1_ids: number[];
+    ms1_scans: number[];
+    spectrum_ids: number[];
+    scans: number[];
+    precursor_mono_mass: number | null;
+    precursor_charge: number | null;
+    precursor_mz: number | null;
+    feature_inte: number | null;
+  };
+  sequence: {
+    value: string;
+    annotated: string;
+    first_position: number | null;
+    last_position: number | null;
+    protein_length: number | null;
+    breakpoints: number[];
+    modifications: TopMSVSequenceModification[];
+  };
+  ms2: {
+    available_spectrum_ids: number[];
+    selected_spectrum_id: number | null;
+    selected_scan_id: number | null;
+    raw_peaks: TopMSVRawPeak[];
+    raw_peak_count: number;
+    envelopes: TopMSVEnvelopeSummary[];
+    target_mz: number | null;
+    min_mz: number | null;
+    max_mz: number | null;
+    retention_time: number | null;
+    matched_peaks: TopMSVMatchedPeak[];
+  };
+}
+
+export interface GetTopMSVPrsmParams {
+  execution_id?: string;
+  workflow_id?: string;
+  node_id: string;
+  prsm_id: number;
+  spectrum_id?: number;
+  port_id?: string;
+  sample?: string;
 }

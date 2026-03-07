@@ -12,6 +12,11 @@ import type {
 import { workspaceDataApi } from '@/services/api/workspace-data'
 import type { APIClientLike } from '@/services/api/client'
 import { useStateBusStore } from '@/stores/state-bus'
+import { useWorkflowStore } from '@/stores/workflow'
+
+interface LoadNodeDataOptions {
+  allowNonTabularFallback?: boolean
+}
 
 /**
  * Visualization Pinia Store
@@ -24,6 +29,7 @@ export const useVisualizationStore = defineStore('visualization', () => {
   const nodeSelections = ref<Map<string, NodeSelectionEntry>>(new Map())
   const loadingStates = ref<Map<string, LoadingState>>(new Map())
   const apiClient = ref<APIClientLike | null>(null)
+  const workflowStore = useWorkflowStore()
 
   /**
    * Generate composite key for data storage
@@ -112,6 +118,56 @@ export const useVisualizationStore = defineStore('visualization', () => {
     return !!entry && entry.data !== null
   })
 
+  function extractErrorStatus(error: unknown): number | null {
+    const candidateValues = [
+      (error as any)?.status,
+      (error as any)?.statusCode,
+      (error as any)?.response?.status,
+      (error as any)?.details?.status,
+      (error as any)?.details?.response?.status,
+      (error as any)?.details?.details?.status,
+    ]
+    for (const value of candidateValues) {
+      if (typeof value === 'number' && Number.isFinite(value)) {
+        return value
+      }
+    }
+    return null
+  }
+
+  function extractErrorMessage(error: unknown): string {
+    const messages: string[] = []
+    if (error instanceof Error && error.message) {
+      messages.push(error.message)
+    }
+
+    const details = [
+      (error as any)?.detail,
+      (error as any)?.details?.detail,
+      (error as any)?.details?.message,
+      (error as any)?.details?.details?.detail,
+      (error as any)?.details?.details?.message,
+    ]
+    for (const detail of details) {
+      if (typeof detail === 'string' && detail.trim()) {
+        messages.push(detail.trim())
+      }
+    }
+
+    return Array.from(new Set(messages)).join(' | ')
+  }
+
+  function isStaleExecutionMessage(message: string): boolean {
+    const normalized = message.toLowerCase()
+    return (
+      normalized.includes('older workflow revision') ||
+      normalized.includes('not part of execution') ||
+      normalized.includes('workflow snapshot is empty') ||
+      normalized.includes('execution not found') ||
+      normalized.includes('node not found in workflow snapshot')
+    )
+  }
+
   // Actions
 
   /**
@@ -133,7 +189,8 @@ export const useVisualizationStore = defineStore('visualization', () => {
     nodeId: string,
     executionId: string,
     portId: string | null = null,
-    upstreamNodeId?: string
+    upstreamNodeId?: string,
+    options: LoadNodeDataOptions = {}
   ): Promise<TableData | null> {
     if (!apiClient.value) {
       console.error('[VisualizationStore] API client not set')
@@ -188,6 +245,9 @@ export const useVisualizationStore = defineStore('visualization', () => {
       const outputWithData = response.outputs?.find(
         (output) => output.parseable && output.data !== null
       )
+      const outputForFallback = options.allowNonTabularFallback
+        ? response.outputs?.find((output) => output.exists && !!output.file_path)
+        : undefined
 
       console.log(`[VisualizationStore] Output with data:`, outputWithData ? {
         port_id: outputWithData.port_id,
@@ -197,6 +257,45 @@ export const useVisualizationStore = defineStore('visualization', () => {
       } : null)
 
       if (!outputWithData || !outputWithData.data) {
+        if (outputForFallback) {
+          const fallbackRow: Record<string, unknown> = {
+            __execution_id: executionId,
+            __workflow_id: workflowStore.currentWorkflow?.metadata?.id || '',
+            __node_id: actualNodeId,
+            __port_id: outputForFallback.port_id || '',
+            __data_type: outputForFallback.data_type || '',
+            __file_path: outputForFallback.file_path || '',
+            __relative_path: outputForFallback.relative_path || '',
+            __file_name: outputForFallback.file_name || '',
+            __is_directory: Boolean(outputForFallback.is_directory),
+            __sample:
+              ((workflowStore.currentWorkflow?.metadata as any)?.sample_context?.sample as string | undefined) || '',
+          }
+
+          const fallbackColumns = Object.keys(fallbackRow).map((name) => ({
+            id: name,
+            name,
+            type: typeof fallbackRow[name] === 'boolean' ? 'boolean' as const : 'text' as const,
+            visible: false,
+            sortable: false,
+            filterable: false,
+          }))
+
+          const fallbackData: TableData = {
+            columns: fallbackColumns,
+            rows: [fallbackRow],
+            totalRows: 1,
+            sourceFile: outputForFallback.file_path || '',
+          }
+
+          nodeData.value.set(dataKey, {
+            data: fallbackData,
+            loadingState: { status: 'success' },
+          })
+          loadingStates.value.set(dataKey, { status: 'success' })
+          return fallbackData
+        }
+
         const hasOutputs = response.outputs && response.outputs.length > 0
         const allMissing = hasOutputs && response.outputs!.every(o => !o.exists)
         const message = allMissing
@@ -242,24 +341,29 @@ export const useVisualizationStore = defineStore('visualization', () => {
 
       return visualizationTableData
     } catch (error) {
-      // Check if this is a 404 error (node data not yet available)
-      const is404 = error instanceof Error && (
-        error.message.includes('404') ||
-        (error as any).response?.status === 404 ||
-        (error as any).statusCode === 404
-      )
+      const statusCode = extractErrorStatus(error)
+      const errorMsg = extractErrorMessage(error) || 'Unknown error'
+      const is404 = statusCode === 404 || errorMsg.includes('404')
+      const isStaleExecution = isStaleExecutionMessage(errorMsg)
 
-      if (is404) {
-        // Node data not yet available - this is normal for unexecuted or running workflows
-        console.log(`[VisualizationStore] Node ${nodeId} data not yet available (workflow not executed or node not complete)`)
+      if (is404 || isStaleExecution) {
+        const pendingMessage = isStaleExecution
+          ? 'Execution data is from an older workflow revision. Please re-run and switch to the latest execution.'
+          : 'Waiting for workflow execution to complete...'
+
+        console.warn(
+          `[VisualizationStore] Node ${dataAddressNodeId} data pending/unavailable:`,
+          { statusCode, errorMsg }
+        )
+
         loadingStates.value.set(dataKey, {
           status: 'pending',
-          message: 'Waiting for workflow execution to complete...',
+          message: pendingMessage,
         })
 
         nodeData.value.set(dataKey, {
           data: null,
-          loadingState: { status: 'pending', message: 'Waiting for workflow execution' },
+          loadingState: { status: 'pending', message: pendingMessage },
         })
 
         return null
@@ -267,7 +371,6 @@ export const useVisualizationStore = defineStore('visualization', () => {
 
       // For other errors, log and set error state
       console.error(`[VisualizationStore] Failed to load data for node ${dataAddressNodeId}:`, error)
-      const errorMsg = error instanceof Error ? error.message : 'Unknown error'
 
       loadingStates.value.set(dataKey, {
         status: 'error',

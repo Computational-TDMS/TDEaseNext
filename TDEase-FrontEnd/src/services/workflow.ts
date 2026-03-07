@@ -775,16 +775,42 @@ async function mergeToolConfigsToWorkflow(workflow: WorkflowJSON, registryPreloa
 
     console.log(`[mergeToolConfigsToWorkflow] Node ${node.id}: toolId=${toolId}, hasExecutionMode=${!!toolCfg.executionMode}`)
 
+    const nodeVisualization = (node.visualizationConfig || {}) as Record<string, any>
+    const toolVisualization = (toolCfg.visualization || {}) as Record<string, any>
+    const visualizationType = nodeVisualization.type || toolVisualization.type
+    const mergedVisualizationConfig: Record<string, unknown> = {
+      ...(toolVisualization.config && typeof toolVisualization.config === 'object' ? toolVisualization.config : {}),
+      ...(nodeVisualization.config && typeof nodeVisualization.config === 'object' ? nodeVisualization.config : {}),
+    }
+
+    const selectionKeyField =
+      (mergedVisualizationConfig.selectionKeyField as string | undefined) ||
+      (mergedVisualizationConfig.selection_key_field as string | undefined) ||
+      (toolCfg.selection_key_field as string | undefined) ||
+      (toolCfg.selectionKeyField as string | undefined)
+
+    if (
+      selectionKeyField &&
+      !mergedVisualizationConfig.selectionKeyField &&
+      !mergedVisualizationConfig.selection_key_field
+    ) {
+      mergedVisualizationConfig.selectionKeyField = selectionKeyField
+    }
+
+    const visualizationConfig = visualizationType
+      ? {
+          type: visualizationType,
+          config: Object.keys(mergedVisualizationConfig).length > 0 ? mergedVisualizationConfig : undefined,
+          components: nodeVisualization.components ?? toolVisualization.components,
+        }
+      : undefined
+
     return {
       ...node,
       // Merge executionMode if not already present
       executionMode: node.executionMode || toolCfg.executionMode || toolCfg.execution_mode || undefined,
-      // Merge visualizationConfig if not already present
-      visualizationConfig: node.visualizationConfig || (toolCfg.visualization ? {
-        type: toolCfg.visualization.type,
-        config: toolCfg.visualization.config,
-        components: toolCfg.visualization.components
-      } : undefined),
+      // Merge visualizationConfig and preserve node-level overrides
+      visualizationConfig: visualizationConfig as any,
       // Update inputs with portKind and semanticType if missing
       inputs: node.inputs.map(input => {
         const portDef = (toolCfg.ports?.inputs || toolCfg.inputs || []).find(

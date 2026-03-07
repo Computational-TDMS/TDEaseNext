@@ -25,7 +25,7 @@ from app.services.unified_workspace_manager import get_unified_workspace_manager
 DB_PATH = "data/tdease.db"
 DEFAULT_USER_ID = "test_user"
 DEFAULT_WORKSPACE_ID = "test_workspace"
-DEFAULT_WORKFLOW_PATH = Path(__file__).parent.parent / "tests" / "test.json"
+DEFAULT_WORKFLOW_PATH = Path(__file__).parent.parent / "workflows" / "wf_test_full.json"
 SAMPLES_FIXTURE_PATH = Path(__file__).parent.parent / "tests" / "fixtures" / "samples_test_workspace.json"
 
 

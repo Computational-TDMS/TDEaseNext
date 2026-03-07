@@ -116,6 +116,103 @@ def _resolve_output_paths(
     return result
 
 
+def _read_text_lines(file_path: Path) -> List[str]:
+    with open(file_path, "r", encoding="utf-8", errors="replace") as fp:
+        return fp.read().splitlines()
+
+
+def _looks_like_key_value_preamble(fields: List[str]) -> bool:
+    """
+    Detect if a TSV row looks like a key-value preamble line (e.g. "Key: value").
+    Used to skip non-header lines when detecting tabular header. Port-level
+    fileFormat.preambleStyle (key_value | comment | none) can override behavior in future.
+    """
+    non_empty = [field.strip() for field in fields if field.strip()]
+    if not non_empty:
+        return True
+    if non_empty[0].endswith(":"):
+        return True
+    if len(non_empty) <= 2 and any(field.endswith(":") for field in non_empty):
+        return True
+    return False
+
+
+def _find_tabular_header(
+    lines: List[str],
+    delimiter: str,
+    preamble_style: str = "key_value",
+) -> tuple[Optional[int], List[str]]:
+    """
+    Detect header row and return (line_index, columns).
+
+    TSV: skips comment lines (#, *) and key-value preamble when preamble_style is "key_value".
+    CSV: uses first non-empty line as header. preamble_style can be "key_value" | "comment" | "none".
+    """
+    skip_preamble = preamble_style == "key_value"
+
+    for idx, raw in enumerate(lines):
+        stripped = raw.strip()
+        if not stripped:
+            continue
+
+        if delimiter == ",":
+            return idx, [part.strip() for part in stripped.split(delimiter)]
+
+        if stripped.startswith("#") or stripped.startswith("*"):
+            continue
+        if "\t" not in stripped:
+            continue
+
+        columns = [part.strip() for part in stripped.split("\t")]
+        non_empty = [part for part in columns if part]
+        if len(non_empty) < 2:
+            continue
+        if skip_preamble and _looks_like_key_value_preamble(columns):
+            continue
+
+        has_nonempty_after = False
+        has_data_like_after = False
+        for follow_raw in lines[idx + 1 :]:
+            follow = follow_raw.strip()
+            if not follow:
+                continue
+            has_nonempty_after = True
+            if follow.startswith("#") or follow.startswith("*"):
+                continue
+            if "\t" not in follow:
+                continue
+            follow_fields = [part.strip() for part in follow.split("\t")]
+            follow_non_empty = [part for part in follow_fields if part]
+            if len(follow_non_empty) < 2:
+                continue
+            if skip_preamble and _looks_like_key_value_preamble(follow_fields):
+                continue
+            has_data_like_after = True
+            break
+
+        if has_data_like_after or not has_nonempty_after:
+            return idx, columns
+
+    return None, []
+
+
+def _is_tabular_parseable(file_path: Path) -> bool:
+    extension = file_path.suffix.lower()
+    if extension not in TABULAR_EXTENSIONS:
+        return False
+    if not file_path.exists():
+        return False
+    try:
+        lines = _read_text_lines(file_path)
+    except OSError:
+        return False
+    if not lines:
+        return False
+    delimiter = "," if extension == ".csv" else "\t"
+    header_idx, _ = _find_tabular_header(lines, delimiter)
+    return header_idx is not None
+
+
 def parse_tabular_file(file_path: Path, max_rows: Optional[int] = None) -> Dict[str, Any]:
     """
     解析表格文件（TSV/CSV/TXT等）
@@ -145,35 +242,39 @@ def parse_tabular_file(file_path: Path, max_rows: Optional[int] = None) -> Dict[
     logger.info(f"[parse_tabular_file] File extension: {extension}, delimiter: '{delimiter}'")
     logger.info(f"[parse_tabular_file] Max rows: {max_rows}")
 
-    columns = []
-    rows = []
+    columns: List[str] = []
+    rows: List[Dict[str, str]] = []
     total_rows = 0
 
     try:
-        with open(file_path, 'r', encoding='utf-8') as f:
-            # 读取列名
-            header_line = f.readline().strip()
-            if header_line:
-                columns = header_line.split(delimiter)
-                logger.info(f"[parse_tabular_file] Found {len(columns)} columns: {columns}")
-            else:
-                logger.warning(f"[parse_tabular_file] Empty header line in file: {file_path}")
+        lines = _read_text_lines(file_path)
+        if not lines:
+            return {"columns": [], "rows": [], "total_rows": 0}
 
-            # 读取数据行
-            for line in f:
-                total_rows += 1
-                if max_rows is not None and len(rows) >= max_rows:
-                    # 继续计数以获取 total_rows，但不存储数据
-                    continue
+        header_idx, columns = _find_tabular_header(lines, delimiter)
+        if header_idx is None:
+            raise ValueError(f"No tabular header detected in file: {file_path}")
 
-                values = line.strip().split(delimiter)
-                if len(values) == len(columns):
-                    row_data = dict(zip(columns, values))
-                    rows.append(row_data)
-                elif values:  # 处理列数不匹配的情况
-                    # 用索引作为键
-                    row_data = {f"col_{i}": v for i, v in enumerate(values)}
-                    rows.append(row_data)
+        logger.info(f"[parse_tabular_file] Found {len(columns)} columns: {columns}")
+
+        # 读取数据行
+        for line in lines[header_idx + 1 :]:
+            if not line.strip():
+                continue
+
+            total_rows += 1
+            if max_rows is not None and len(rows) >= max_rows:
+                # 继续计数以获取 total_rows，但不存储数据
+                continue
+
+            values = line.strip().split(delimiter)
+            if len(values) == len(columns):
+                row_data = dict(zip(columns, values))
+                rows.append(row_data)
+            elif any(values):  # 处理列数不匹配的情况
+                # 用索引作为键
+                row_data = {f"col_{i}": v for i, v in enumerate(values)}
+                rows.append(row_data)
 
         logger.info(f"[parse_tabular_file] Successfully parsed {len(rows)} rows (total: {total_rows})")
     except OSError as exc:
@@ -249,8 +350,34 @@ def resolve_node_outputs(
     workflow_id = row[3] if len(row) > 3 else None
     workspace_path = Path(workspace_path_str)
 
+    def _execution_has_node(execution: str, target_node: str) -> Optional[bool]:
+        """Check whether execution_nodes table records this node for the execution.
+
+        Returns:
+            True/False when table exists, None when table is unavailable.
+        """
+        try:
+            cursor.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name='execution_nodes'"
+            )
+            if not cursor.fetchone():
+                return None
+            cursor.execute(
+                "SELECT 1 FROM execution_nodes WHERE execution_id = ? AND node_id = ? LIMIT 1",
+                (execution, target_node),
+            )
+            return cursor.fetchone() is not None
+        except Exception:
+            return None
+
     # 2. 解析 workflow_snapshot 找到节点的 tool_id（无 snapshot 时从 workflows 表或上次执行回退）
     if not workflow_snapshot_json and workflow_id:
+        execution_has_node = _execution_has_node(execution_id, node_id)
+        if execution_has_node is False:
+            raise ValueError(
+                f"Node '{node_id}' is not part of execution '{execution_id}'. "
+                "This execution may belong to an older workflow revision; please run the latest workflow again."
+            )
         try:
             cursor.execute("SELECT vueflow_data FROM workflows WHERE id = ?", (workflow_id,))
             wf_row = cursor.fetchone()
@@ -373,7 +500,8 @@ def resolve_node_outputs(
 
     for idx, file_path in enumerate(output_paths):
         file_exists = file_path.exists()
-        file_size = file_path.stat().st_size if file_exists else 0
+        is_directory = file_exists and file_path.is_dir()
+        file_size = file_path.stat().st_size if file_exists and not is_directory else 0
         file_name = file_path.name
 
         logger.debug(f"[resolve_node_outputs] Processing output {idx}: {file_name}")
@@ -394,7 +522,7 @@ def resolve_node_outputs(
 
         # 判断是否可解析
         extension = file_path.suffix.lower()
-        parseable = extension in TABULAR_EXTENSIONS and file_exists
+        parseable = extension in TABULAR_EXTENSIONS and file_exists and _is_tabular_parseable(file_path)
 
         logger.debug(f"  - Extension: {extension}")
         logger.debug(f"  - Parseable: {parseable} (in TABULAR_EXTENSIONS: {extension in TABULAR_EXTENSIONS})")
@@ -408,6 +536,7 @@ def resolve_node_outputs(
             "relative_path": str(file_path.relative_to(workspace_path)) if file_exists else str(file_path),
             "file_size": file_size,
             "exists": file_exists,
+            "is_directory": is_directory,
             "parseable": parseable,
             "data": None
         }

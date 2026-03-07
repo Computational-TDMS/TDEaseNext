@@ -14,8 +14,10 @@ import type {
   WorkspaceFilesResponse,
   FileContentResponse,
   LatestExecutionResponse,
+  TopMSVPrsmDataResponse,
   GetNodeDataParams,
   GetFileContentParams,
+  GetTopMSVPrsmParams,
 } from '../../types/workspace-data'
 import { createError, ErrorCode } from '../../types/errors'
 
@@ -43,6 +45,9 @@ export async function getNodeData(
     )
     return response.data
   } catch (error) {
+    if (error instanceof Error) {
+      throw error
+    }
     throw createError(ErrorCode.API_ERROR, 'Failed to get node data', undefined, error)
   }
 }
@@ -66,6 +71,9 @@ export async function getNodeFiles(
     )
     return response.data
   } catch (error) {
+    if (error instanceof Error) {
+      throw error
+    }
     throw createError(ErrorCode.API_ERROR, 'Failed to get node files', undefined, error)
   }
 }
@@ -87,6 +95,9 @@ export async function getLatestExecution(
     )
     return response.data
   } catch (error) {
+    if (error instanceof Error) {
+      throw error
+    }
     throw createError(ErrorCode.API_ERROR, 'Failed to get latest execution', undefined, error)
   }
 }
@@ -110,6 +121,9 @@ export async function getWorkspaceFiles(
     )
     return response.data
   } catch (error) {
+    if (error instanceof Error) {
+      throw error
+    }
     throw createError(ErrorCode.API_ERROR, 'Failed to get workspace files', undefined, error)
   }
 }
@@ -133,7 +147,70 @@ export async function getFileContent(
     )
     return response.data
   } catch (error) {
+    if (error instanceof Error) {
+      throw error
+    }
     throw createError(ErrorCode.API_ERROR, 'Failed to get file content', undefined, error)
+  }
+}
+
+/**
+ * Get TopMSV PrSM payload directly from TopPIC/TopFD HTML assets.
+ */
+export async function getTopMSVPrsmData(
+  client: APIClientLike,
+  params: GetTopMSVPrsmParams
+): Promise<TopMSVPrsmDataResponse> {
+  try {
+    const { execution_id, workflow_id, node_id, prsm_id, spectrum_id, port_id, sample } = params
+    const queryParams: Record<string, unknown> = {}
+    if (spectrum_id !== undefined) queryParams.spectrum_id = spectrum_id
+    if (port_id) queryParams.port_id = port_id
+    if (sample) queryParams.sample = sample
+
+    if (workflow_id) {
+      try {
+        const workflowParams = {
+          ...queryParams,
+          resolver: 'topmsv_prsm',
+        }
+        const response = await client.get<TopMSVPrsmDataResponse>(
+          `/api/workflows/${workflow_id}/nodes/${node_id}/interactive-data/${prsm_id}`,
+          workflowParams
+        )
+        return response.data
+      } catch (error) {
+        // Keep legacy execution endpoint as fallback while migration is in progress.
+        if (!execution_id) {
+          if (error instanceof Error) {
+            throw error
+          }
+          throw createError(ErrorCode.API_ERROR, 'Failed to get TopMSV PrSM data', undefined, error)
+        }
+        console.warn(
+          '[workspaceDataApi] Workflow-level interactive-data failed, falling back to execution endpoint:',
+          error
+        )
+      }
+    }
+
+    if (!execution_id) {
+      throw createError(
+        ErrorCode.VALIDATION_ERROR,
+        'execution_id is required when workflow_id is unavailable'
+      )
+    }
+
+    const response = await client.get<TopMSVPrsmDataResponse>(
+      `/api/executions/${execution_id}/nodes/${node_id}/topmsv/prsm/${prsm_id}`,
+      queryParams
+    )
+    return response.data
+  } catch (error) {
+    if (error instanceof Error) {
+      throw error
+    }
+    throw createError(ErrorCode.API_ERROR, 'Failed to get TopMSV PrSM data', undefined, error)
   }
 }
 
@@ -146,6 +223,7 @@ export const workspaceDataApi = {
   getLatestExecution,
   getWorkspaceFiles,
   getFileContent,
+  getTopMSVPrsmData,
 } as const
 
 export type WorkspaceDataApi = typeof workspaceDataApi

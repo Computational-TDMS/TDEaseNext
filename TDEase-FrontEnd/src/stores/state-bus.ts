@@ -82,6 +82,23 @@ export const useStateBusStore = defineStore('stateBus', () => {
     existing.add(callback)
     subscriptions.value.set(key, existing)
 
+    // Replay latest upstream state so late subscribers still receive current selection.
+    for (const [sourceKey, targets] of stateConnections.value.entries()) {
+      if (!targets.includes(key)) continue
+      const { nodeId: sourceNodeId, portId: sourcePortId } = splitKey(sourceKey)
+      const sourcePayload = nodeStates.value.get(sourceNodeId)?.get(sourcePortId)
+      if (!sourcePayload) continue
+
+      Promise.resolve().then(() => {
+        callback(sourcePayload, {
+          sourceNodeId,
+          sourcePortId,
+          targetNodeId,
+          targetPortId: portId,
+        })
+      })
+    }
+
     return () => {
       const current = subscriptions.value.get(key)
       if (!current) return

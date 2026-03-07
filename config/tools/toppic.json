@@ -5,7 +5,7 @@
   "description": "TopPIC: Identify proteoforms using MSAlign and FASTA database",
   "executionMode": "native",
   "command": {
-    "executable": "D:\\Projects\\TDEase-Backend\\toppic-windows-1.8.0\\toppic.exe"
+    "executable": "toppic"
   },
   "ports": {
     "inputs": [
@@ -113,6 +113,16 @@
           "html"
         ],
         "description": "HTML files for PrSM and proteoform visualization (open topmsv/index.html in Chrome)",
+        "subResources": {
+          "prsm_js": {
+            "pattern": "**/data_js/prsms/prsm{id}.js",
+            "preferPaths": ["toppic_prsm_cutoff", "toppic_prsm"]
+          },
+          "spectrum_js": {
+            "pattern": "**/ms2_json/spectrum{id}.js",
+            "optional": true
+          }
+        },
         "schema": [
           {
             "id": "PrSMID",

@@ -8,7 +8,7 @@ Workflow Graph - DAG 图结构与节点状态管理
 """
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any, Dict, List, Optional, Set
 
 
 class NodeState(str, Enum):
@@ -30,6 +30,18 @@ class GraphNode:
     error_message: Optional[str] = None
 
 
+@dataclass
+class GraphEdge:
+    id: str
+    source: str
+    target: str
+    source_handle: Optional[str]
+    target_handle: Optional[str]
+    connection_kind: str
+    semantic_type: Optional[str]
+    dependency: bool
+
+
 class WorkflowGraph:
     """
     工作流 DAG 图
@@ -39,6 +51,7 @@ class WorkflowGraph:
 
     def __init__(self, nodes: List[Dict], edges: List[Dict]):
         self._nodes: Dict[str, GraphNode] = {}
+        self._edges: List[GraphEdge] = []
         self._build(nodes, edges)
 
     def _build(self, nodes: List[Dict], edges: List[Dict]) -> None:
@@ -52,8 +65,24 @@ class WorkflowGraph:
             tgt = e.get("target")
             if not src or not tgt or src not in self._nodes or tgt not in self._nodes:
                 continue
-            self._nodes[tgt].predecessors.add(src)
-            self._nodes[src].successors.add(tgt)
+            connection_kind = str(e.get("connectionKind") or "data").lower()
+            semantic_type = e.get("semanticType")
+            is_dependency = connection_kind in {"data", "control"}
+            self._edges.append(
+                GraphEdge(
+                    id=str(e.get("id") or ""),
+                    source=src,
+                    target=tgt,
+                    source_handle=e.get("sourceHandle"),
+                    target_handle=e.get("targetHandle"),
+                    connection_kind=connection_kind,
+                    semantic_type=semantic_type,
+                    dependency=is_dependency,
+                )
+            )
+            if is_dependency:
+                self._nodes[tgt].predecessors.add(src)
+                self._nodes[src].successors.add(tgt)
 
     def has_cycle(self) -> bool:
         """检测是否存在环"""
@@ -128,3 +157,18 @@ class WorkflowGraph:
 
     def node_ids(self) -> List[str]:
         return list(self._nodes.keys())
+
+    def edges(self) -> List[Dict[str, Any]]:
+        return [
+            {
+                "id": edge.id,
+                "source": edge.source,
+                "target": edge.target,
+                "sourceHandle": edge.source_handle,
+                "targetHandle": edge.target_handle,
+                "connectionKind": edge.connection_kind,
+                "semanticType": edge.semantic_type,
+                "dependency": edge.dependency,
+            }
+            for edge in self._edges
+        ]

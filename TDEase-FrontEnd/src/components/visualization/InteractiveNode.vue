@@ -58,7 +58,8 @@ import TableViewer from './TableViewer.vue'
 import HeatmapViewer from './HeatmapViewer.vue'
 import SpectrumViewer from './SpectrumViewer.vue'
 import VolcanoPlotViewer from './VolcanoPlotViewer.vue'
-import HtmlViewer from './HtmlViewer.vue'
+import TopMSVMs2Viewer from './TopMSVMs2Viewer.vue'
+import TopMSVSequenceViewer from './TopMSVSequenceViewer.vue'
 
 interface NodePort {
   id: string
@@ -136,7 +137,8 @@ const visualizationType = computed(() => {
   if (toolId.includes('heatmap')) return 'heatmap'
   if (toolId.includes('spectrum')) return 'spectrum'
   if (toolId.includes('volcano')) return 'volcano'
-  if (toolId.includes('html')) return 'html'
+  if (toolId.includes('topmsv_ms2')) return 'topmsv_ms2'
+  if (toolId.includes('topmsv_sequence')) return 'topmsv_sequence'
   return 'table'
 })
 
@@ -148,7 +150,8 @@ const viewerComponent = computed(() => {
     heatmap: HeatmapViewer,
     spectrum: SpectrumViewer,
     volcano: VolcanoPlotViewer,
-    html: HtmlViewer,
+    topmsv_ms2: TopMSVMs2Viewer,
+    topmsv_sequence: TopMSVSequenceViewer,
   }
   return typeMap[visualizationType.value] || TableViewer
 })
@@ -211,28 +214,50 @@ function normalizeSelectionPayload(payload: StatePayload): SelectionState | null
   const source = payload.data as any
   if (!source) return null
 
+  const normalizeValue = (value: unknown): number | null => {
+    const parsed = Number(value)
+    return Number.isFinite(parsed) ? parsed : null
+  }
+
   if (source instanceof Set) {
+    const normalized = new Set<number>()
+    for (const item of source) {
+      const parsed = normalizeValue(item)
+      if (parsed !== null) normalized.add(parsed)
+    }
     return {
-      selectedIndices: source,
+      selectedIndices: normalized,
       filterCriteria: [],
       brushRegion: null,
     }
   }
 
   if (Array.isArray(source)) {
+    const normalized = source
+      .map((item) => normalizeValue(item))
+      .filter((item): item is number => item !== null)
     return {
-      selectedIndices: new Set(source.map((item) => Number(item))),
+      selectedIndices: new Set(normalized),
       filterCriteria: [],
       brushRegion: null,
     }
   }
 
   const selectedRaw = source.selectedIndices
-  const selectedIndices = selectedRaw instanceof Set
-    ? selectedRaw
-    : Array.isArray(selectedRaw)
-      ? new Set(selectedRaw.map((item: unknown) => Number(item)))
-      : null
+  let selectedIndices: Set<number> | null = null
+  if (selectedRaw instanceof Set) {
+    const normalized = new Set<number>()
+    for (const item of selectedRaw) {
+      const parsed = normalizeValue(item)
+      if (parsed !== null) normalized.add(parsed)
+    }
+    selectedIndices = normalized
+  } else if (Array.isArray(selectedRaw)) {
+    const normalized = selectedRaw
+      .map((item: unknown) => normalizeValue(item))
+      .filter((item): item is number => item !== null)
+    selectedIndices = new Set(normalized)
+  }
   if (!selectedIndices) return null
 
   return {
@@ -298,8 +323,10 @@ export default {
   align-items: stretch;
   gap: 8px;
   min-height: 360px;
+  max-height: 70vh;
   width: 100%;
   background: transparent;
+  overflow: hidden;
 }
 
 .interactive-node.selected {
@@ -320,6 +347,9 @@ export default {
 
 .vis-main {
   min-height: 360px;
+  max-height: 70vh;
+  overflow-y: auto;
+  min-width: 0;
 }
 
 @media (max-width: 960px) {

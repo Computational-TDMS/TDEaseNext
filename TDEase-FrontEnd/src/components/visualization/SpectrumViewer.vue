@@ -146,11 +146,11 @@ function updateChart() {
         const inten = api.value(1)
         const p1 = api.coord([mz, 0])
         const p2 = api.coord([mz, inten])
-        const style = api.style({
+        const style = {
           stroke: '#f56c6c',
           lineWidth: 2,
           opacity: 1,
-        })
+        }
         return { type: 'line', shape: { x1: p1[0], y1: p1[1], x2: p2[0], y2: p2[1] }, style }
       },
       data: selectedData.map(d => ({ ...d, value: [d.mz, d.intensity, d.index] })),
@@ -165,11 +165,11 @@ function updateChart() {
         const inten = api.value(1)
         const p1 = api.coord([mz, 0])
         const p2 = api.coord([mz, inten])
-        const style = api.style({
+        const style = {
           stroke: '#409eff',
           lineWidth: 1,
           opacity: 0.85,
-        })
+        }
         return { type: 'line', shape: { x1: p1[0], y1: p1[1], x2: p2[0], y2: p2[1] }, style }
       },
       data: unselectedData.map(d => ({ ...d, value: [d.mz, d.intensity, d.index] })),
@@ -271,11 +271,7 @@ watch(() => props.selection, (s) => {
   if (!sameItems) {
     baseViewer.value.setSelection?.(Array.from(incoming))
   }
-  if (incoming.size) {
-    localSelectedCount.value = s.selectedIndices.size
-  } else {
-    localSelectedCount.value = 0
-  }
+  localSelectedCount.value = incoming.size
   isSyncingExternalSelection.value = false
   updateChart()
 }, { deep: true })

@@ -30,13 +30,13 @@
         ref="gridRef"
         class="ag-theme-alpine"
         style="width: 100%; height: 100%"
+        theme="legacy"
         :column-defs="columnDefs"
         :row-data="rowData"
         :default-col-def="defaultColDef"
         :row-selection="rowSelection"
         :pagination="true"
         :pagination-page-size="50"
-        :suppress-row-click-selection="true"
         :enable-cell-text-selection="true"
         @selection-changed="onSelectionChanged"
       />
@@ -73,9 +73,18 @@ const gridApi = ref<GridApi | null>(null)
 
 // State
 const selectedIndices = ref<Set<number>>(new Set())
+const isApplyingExternalSelection = ref(false)
+const autoSelectionSignature = ref<string | null>(null)
 
 // Computed
 const selectedCount = computed(() => selectedIndices.value.size)
+const selectionKeyField = computed<string | null>(() => {
+  const cfg = props.config || {}
+  const key = (cfg.selectionKeyField || cfg.selection_key_field) as string | undefined
+  if (!key || typeof key !== 'string') return null
+  const trimmed = key.trim()
+  return trimmed || null
+})
 
 // Column definitions
 const columnDefs = computed<any[]>(() => {
@@ -89,13 +98,6 @@ const columnDefs = computed<any[]>(() => {
     resizable: true,
     flex: 1,
     minWidth: 100,
-    cellStyle: (params: any) => {
-      // Highlight selected rows
-      if (selectedIndices.value.has(params.rowIndex)) {
-        return { backgroundColor: '#ecf5ff' }
-      }
-      return undefined
-    },
   }))
 })
 
@@ -111,22 +113,102 @@ const rowData = computed(() => {
   return props.data.rows
 })
 
-const rowSelection: any = 'multiple'
+const rowSelection = {
+  mode: 'multiRow' as const,
+  enableClickSelection: true,
+  checkboxes: false,
+  headerCheckbox: false,
+}
 
 // Methods
+function toSelectionNumber(value: unknown, fallback: number | null = null): number | null {
+  if (value === null || value === undefined || value === '') {
+    return fallback
+  }
+  const parsed = Number(value)
+  if (Number.isFinite(parsed)) return parsed
+  return fallback
+}
+
+function resolveRowSelectionValue(rowData: Record<string, unknown>, rowIndex: number | null): number | null {
+  if (selectionKeyField.value) {
+    return toSelectionNumber(rowData[selectionKeyField.value], null)
+  }
+  return rowIndex === null ? null : rowIndex
+}
+
+function dataSignature(data: TableData | null): string {
+  if (!data) return ''
+  const firstColumn = data.columns?.[0]?.id || ''
+  return `${data.sourceFile || ''}|${data.totalRows || 0}|${firstColumn}`
+}
+
+function applySelectionToGrid(selection: Set<number>) {
+  if (!gridApi.value) return
+
+  isApplyingExternalSelection.value = true
+  gridApi.value.deselectAll()
+
+  const nodes: any[] = []
+  gridApi.value.forEachNode((node) => {
+    const rowData = (node.data || {}) as Record<string, unknown>
+    const selectionValue = resolveRowSelectionValue(rowData, node.rowIndex)
+    if (selectionValue !== null && selection.has(selectionValue)) {
+      nodes.push(node)
+    }
+  })
+
+  if (nodes.length > 0) {
+    gridApi.value.setNodesSelected({ nodes, newValue: true })
+  }
+
+  isApplyingExternalSelection.value = false
+}
+
+function applyDefaultSelection() {
+  if (!props.data?.rows?.length) return
+  const signature = dataSignature(props.data)
+  if (autoSelectionSignature.value === signature) return
+
+  // Respect upstream selections and existing local selections.
+  if (props.selection?.selectedIndices?.size || selectedIndices.value.size) {
+    autoSelectionSignature.value = signature
+    return
+  }
+
+  const firstRow = props.data.rows[0] as Record<string, unknown>
+  const firstSelectionValue = resolveRowSelectionValue(firstRow, 0)
+  if (firstSelectionValue === null) {
+    autoSelectionSignature.value = signature
+    return
+  }
+
+  const nextSelection = new Set<number>([firstSelectionValue])
+  selectedIndices.value = nextSelection
+  applySelectionToGrid(nextSelection)
+  emitSelectionChange()
+  autoSelectionSignature.value = signature
+}
+
 function onSelectionChanged() {
   if (!gridApi.value) return
+  if (isApplyingExternalSelection.value) return
 
   const selectedNodes = gridApi.value.getSelectedNodes()
   const newSelected = new Set<number>()
 
   selectedNodes.forEach(node => {
-    if (node.rowIndex !== null) {
-      newSelected.add(node.rowIndex)
+    const rowData = (node.data || {}) as Record<string, unknown>
+    const selectionValue = resolveRowSelectionValue(rowData, node.rowIndex)
+    if (selectionValue !== null) {
+      newSelected.add(selectionValue)
     }
   })
 
   selectedIndices.value = newSelected
+  if (props.data) {
+    autoSelectionSignature.value = dataSignature(props.data)
+  }
   emitSelectionChange()
 }
 
@@ -143,6 +225,9 @@ function clearSelection() {
     gridApi.value.deselectAll()
   }
   selectedIndices.value = new Set()
+  if (props.data) {
+    autoSelectionSignature.value = dataSignature(props.data)
+  }
   emitSelectionChange()
 }
 
@@ -160,9 +245,17 @@ function exportCsv() {
 function exportExcel() {
   if (!props.data) return
 
+  const isRowSelected = (row: Record<string, unknown>, idx: number): boolean => {
+    if (selectionKeyField.value) {
+      const keyValue = toSelectionNumber(row[selectionKeyField.value], null)
+      return keyValue !== null && selectedIndices.value.has(keyValue)
+    }
+    return selectedIndices.value.has(idx)
+  }
+
   // Get data to export (selected or all)
   const dataToExport = selectedCount.value > 0
-    ? props.data.rows.filter((_, idx) => selectedIndices.value.has(idx))
+    ? props.data.rows.filter((row, idx) => isRowSelected(row, idx))
     : props.data.rows
 
   // Create worksheet
@@ -179,32 +272,33 @@ function exportExcel() {
 }
 
 // Watch for data changes
-watch(() => props.data, () => {
+watch(() => props.data, async () => {
   if (gridApi.value) {
     gridApi.value.setGridOption('rowData', rowData.value)
   }
+  if (!props.data?.rows?.length) {
+    autoSelectionSignature.value = null
+    selectedIndices.value = new Set()
+    return
+  }
+  await nextTick()
+  applyDefaultSelection()
 }, { deep: true })
 
 // Watch for selection changes from props
 watch(() => props.selection, (newSelection) => {
-  if (newSelection && gridApi.value) {
-    // Clear current selection
-    gridApi.value.deselectAll()
+  if (!gridApi.value || !newSelection) return
 
-    // Apply new selection
-    const nodes: any[] = []
-    newSelection.selectedIndices.forEach(index => {
-      const node = gridApi.value?.getRowNode(String(index))
-      if (node) {
-        nodes.push(node)
-      }
-    })
+  const incoming = new Set<number>()
+  newSelection.selectedIndices.forEach((value) => {
+    const parsed = toSelectionNumber(value, null)
+    if (parsed !== null) incoming.add(parsed)
+  })
 
-    if (nodes.length > 0) {
-      gridApi.value?.setNodesSelected({ nodes, newValue: true })
-    }
-
-    selectedIndices.value = newSelection.selectedIndices
+  applySelectionToGrid(incoming)
+  selectedIndices.value = incoming
+  if (props.data) {
+    autoSelectionSignature.value = dataSignature(props.data)
   }
 }, { deep: true })
 
@@ -216,6 +310,7 @@ onMounted(() => {
       const api = (gridRef.value as any).gridApi
       if (api) {
         gridApi.value = api
+        applyDefaultSelection()
       }
     }
   })

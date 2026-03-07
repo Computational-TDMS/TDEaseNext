@@ -32,6 +32,35 @@ def test_tool_registry_loads_compute_tool():
     assert tool.get("executionMode") in ["native", "compute"], "executionMode should be 'native' or 'compute'"
 
 
+def test_tool_registry_loads_topmsv_tools_with_state_contracts():
+    """TopMSV tools should pass schema loading with explicit state metadata."""
+    registry = get_tool_registry()
+    registry.reload()
+
+    bundle_builder = registry.get("prsm_bundle_builder")
+    ms2_viewer = registry.get("topmsv_ms2_viewer")
+    sequence_viewer = registry.get("topmsv_sequence_viewer")
+
+    assert bundle_builder is not None, "prsm_bundle_builder tool should be loaded"
+    assert ms2_viewer is not None, "topmsv_ms2_viewer tool should be loaded"
+    assert sequence_viewer is not None, "topmsv_sequence_viewer tool should be loaded"
+
+    assert bundle_builder.get("executionMode") == "script"
+    bundle_inputs = {port["id"] for port in bundle_builder["ports"]["inputs"]}
+    bundle_outputs = {port["id"] for port in bundle_builder["ports"]["outputs"]}
+    assert {"prsm_single", "ms2_msalign"}.issubset(bundle_inputs)
+    assert {"prsm_table_clean", "prsm_bundle"}.issubset(bundle_outputs)
+
+    for viewer in (ms2_viewer, sequence_viewer):
+        assert viewer.get("executionMode") == "interactive"
+        assert viewer.get("selection_key_field") == "Prsm ID"
+        state_port = next(
+            p for p in viewer["ports"]["inputs"] if p.get("id") == "selection_in"
+        )
+        assert state_port.get("portKind") == "state-in"
+        assert state_port.get("semanticType") == "state/selection_ids"
+
+
 def test_tool_definition_schema_validation():
     """Test that ToolDefinition accepts new fields"""
     from app.schemas.tool import ToolDefinition

@@ -4,7 +4,25 @@ type RawNode = {
   id: string
   type: string
   position: { x: number; y: number }
-  data: { label?: string; type?: string; params?: Record<string, any> }
+  data?: {
+    label?: string
+    type?: string
+    params?: Record<string, any>
+    visualizationConfig?: {
+      type?: string
+      config?: Record<string, unknown>
+      components?: unknown
+    }
+  }
+  nodeConfig?: {
+    toolId?: string
+    paramValues?: Record<string, any>
+  }
+  visualizationConfig?: {
+    type?: string
+    config?: Record<string, unknown>
+    components?: unknown
+  }
 }
 
 type RawEdge = {
@@ -36,6 +54,55 @@ function inferConnectionKind(
     return 'state'
   }
   return declaredKind || 'data'
+}
+
+function buildVisualizationConfig(node: RawNode, toolCfg: any): {
+  type: string
+  config?: Record<string, unknown>
+  components?: unknown
+} | undefined {
+  const nodeVis = (node.visualizationConfig || node.data?.visualizationConfig) as Record<string, any> | undefined
+  const toolVis = (toolCfg?.visualization || {}) as Record<string, any>
+
+  const type = nodeVis?.type || toolVis?.type
+  if (!type) return undefined
+
+  const mergedConfig: Record<string, unknown> = {
+    ...(toolVis?.config && typeof toolVis.config === 'object' ? toolVis.config : {}),
+    ...(nodeVis?.config && typeof nodeVis.config === 'object' ? nodeVis.config : {}),
+  }
+
+  const selectionKeyField =
+    (mergedConfig.selectionKeyField as string | undefined) ||
+    (mergedConfig.selection_key_field as string | undefined) ||
+    (toolCfg?.selection_key_field as string | undefined) ||
+    (toolCfg?.selectionKeyField as string | undefined)
+
+  if (
+    selectionKeyField &&
+    !mergedConfig.selectionKeyField &&
+    !mergedConfig.selection_key_field
+  ) {
+    mergedConfig.selectionKeyField = selectionKeyField
+  }
+
+  const result: {
+    type: string
+    config?: Record<string, unknown>
+    components?: unknown
+  } = { type }
+
+  if (Object.keys(mergedConfig).length > 0) {
+    result.config = mergedConfig
+  }
+
+  if (nodeVis?.components !== undefined) {
+    result.components = nodeVis.components
+  } else if (toolVis?.components !== undefined) {
+    result.components = toolVis.components
+  }
+
+  return result
 }
 
 export function importRawWorkflow(raw: RawWorkflow, registryPreloaded?: Record<string, any>): WorkflowJSON {
@@ -74,7 +141,7 @@ export function importRawWorkflow(raw: RawWorkflow, registryPreloaded?: Record<s
   }
 
   const nodes: NodeDefinition[] = raw.nodes.map((n) => {
-    const toolId = n.data?.type || n.type
+    const toolId = n.nodeConfig?.toolId || n.data?.type || n.type
     const toolCfg = toolId ? registry[toolId] : undefined
     console.log(`[importRawWorkflow] Node ${n.id}: toolId=${toolId}, toolCfg found=${!!toolCfg}`)
 
@@ -99,7 +166,8 @@ export function importRawWorkflow(raw: RawWorkflow, registryPreloaded?: Record<s
     console.log(`[importRawWorkflow] Node ${n.id}: inputs=${inputs.length}, outputs=${outputs.length}`)
 
     // Samples from params (first array param or specific known keys)
-    const params = n.data?.params || {}
+    const params = n.nodeConfig?.paramValues || n.data?.params || {}
+    const visualizationConfig = buildVisualizationConfig(n, toolCfg)
     let samples: string[] | undefined
     for (const key of Object.keys(params)) {
       const val = params[key]
@@ -121,11 +189,7 @@ export function importRawWorkflow(raw: RawWorkflow, registryPreloaded?: Record<s
       },
       // Extract executionMode and visualizationConfig from tool definition for interactive nodes
       executionMode: toolCfg?.executionMode || toolCfg?.execution_mode || undefined,
-      visualizationConfig: toolCfg?.visualization ? {
-        type: toolCfg.visualization.type,
-        config: toolCfg.visualization.config,
-        components: toolCfg.visualization.components
-      } : undefined,
+      visualizationConfig: visualizationConfig as any,
       inputs: inputs.map((id) => {
         const pdef = inputParams.find((p: any) => (typeof p === 'string' ? p === id : p.id === id))
         const name = typeof pdef === 'string' ? id : (pdef?.name || id)

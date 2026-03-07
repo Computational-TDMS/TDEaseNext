@@ -28,6 +28,12 @@ TDEase 的全局设计兼容了两种完全不同的科研工作流范式：
 - **Interaction Snapshots**：系统会将用户在交互阶段的选择、过滤条件和自定义轴映射保存。
 - **可分享的 Execution Record**：执行记录不仅包含物理输出，还嵌入了交互状态。通过共享快照 ID，其他研究人员可以瞬间复现当时的视觉分片。
 
-## 4.4 架构演进方向
+## 4.4 通用交互数据协议 (Interactive Data Provider)
+- **DataResolverRegistry**：按名称注册 resolver（如 `topmsv_prsm`），实现“根据选择键加载详细数据”的通用协议。
+- **通用 API**：`GET /api/executions/{eid}/nodes/{nid}/interactive-data/{selection_key}?resolver=...` 统一入口，避免为每种查看器新增专属端点。
+- **工具定义驱动**：resolver 从源节点的工具定义中读取 `subResources` 等配置解析路径，保证普适性与可扩展性。
+- **Interactive 节点语义**：工具定义中的 `interactiveBehavior.dataPassthrough` 显式控制输入绑定规划时的“穿透”行为，替代隐式约定。
+
+## 4.5 架构演进方向
 - **AI-Agent 介入**：支持通过自然语言直接下达“展示质量大于 3000 的所有特征”等指令，Agent 将自动修改 StateBus 的过滤状态或更新 `data-query` 参数。
 - **分布式执行**：未来支持将 Batch 任务卸载至云端或 Kubernetes 集群，而本地仅保留 Interactive 计算代理。

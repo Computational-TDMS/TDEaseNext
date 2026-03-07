@@ -4,6 +4,11 @@
   "version": "1.0.0",
   "description": "Interactive table viewer for exploring tabular data (TSV, CSV, etc.)",
   "executionMode": "interactive",
+  "interactiveBehavior": {
+    "dataPassthrough": true,
+    "stateEmitter": true,
+    "outputProduces": "state_only"
+  },
   "command": {
     "executable": "table_viewer"
   },

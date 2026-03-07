@@ -1,0 +1,29 @@
+name: prod-smoke
+
+on:
+  workflow_dispatch:
+
+jobs:
+  smoke-real-tools:
+    name: Production Smoke (TopFD -> TopPIC)
+    runs-on: self-hosted
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: uv sync
+
+      - name: Run production smoke lane
+        env:
+          TDEASE_SMOKE_MZML: ${{ vars.TDEASE_SMOKE_MZML }}
+          TDEASE_SMOKE_FASTA: ${{ vars.TDEASE_SMOKE_FASTA }}
+        run: uv run pytest tests/smoke/test_real_tool_compute_chain.py -m prod_smoke -v -rs

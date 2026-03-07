@@ -28,7 +28,7 @@ def mock_tool_registry():
                     "id": "input_files",
                     "name": "mzML Files",
                     "dataType": "mzml",
-                    "required": True,
+                    "required": False,
                     "positional": True,
                     "positionalOrder": 0,
                     "pattern": "{sample}.mzML"

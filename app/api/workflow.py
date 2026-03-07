@@ -12,7 +12,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, Any, List, Optional
 
-from fastapi import APIRouter, HTTPException, status, Depends, BackgroundTasks
+from fastapi import APIRouter, HTTPException, status, Depends, BackgroundTasks, Query
 from fastapi.responses import JSONResponse, Response
 
 from app.models.workflow import (
@@ -26,10 +26,32 @@ from app.core.platform_manager import get_platform_manager
 from app.core.permission_manager import PermissionManager, get_permission_manager
 from app.services.workflow_format import validate_workflow_document
 from app.services.workflow_diff import has_structure_changed
+from app.services.data_resolver_registry import get_data_resolver_registry
 from app.core.time_utils import utc_now, utc_now_iso_z
+from app.core.executor.errors import ExecutionPublicError, ExecutorError
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+
+def _public_execution_error(exc: Exception) -> ExecutionPublicError:
+    if isinstance(exc, ExecutorError):
+        return exc.to_public_error()
+    return ExecutionPublicError(
+        code="EXECUTION_INTERNAL_ERROR",
+        message="Execution failed due to an internal error.",
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+    )
+
+
+def _raise_sanitized_execution_http_error(operation: str, exc: Exception) -> None:
+    correlation_id = uuid.uuid4().hex
+    public_error = _public_execution_error(exc)
+    logger.exception("%s failed [correlation_id=%s]: %s", operation, correlation_id, exc)
+    raise HTTPException(
+        status_code=public_error.status_code,
+        detail=public_error.to_payload(correlation_id),
+    )
 
 @router.get("/", response_model=WorkflowListResponse)
 async def list_workflows(
@@ -974,8 +996,13 @@ async def execute(
             logger.warning(f"Failed to detect structure change, saving snapshot anyway: {e}")
             workflow_snapshot = json.dumps(wf_v2)
 
+        # Always persist an immutable execution snapshot.
+        # Node data resolution depends on this to avoid drifting with later workflow edits.
+        if not workflow_snapshot:
+            workflow_snapshot = json.dumps(wf_v2)
+
         execution_store.create(execution_id, workflow_id, str(workspace_dir), sample_id, workflow_snapshot)
-        execution_manager.create(execution_id, str(workspace_dir), workflow_id)
+        execution_manager.create(execution_id, str(workspace_dir), workflow_id, persist=False)
         execution_manager.update_status(execution_id, "running", start_time=utc_now_iso_z())
         execution_store.start(execution_id)
         for node in wf_v2.get("nodes", []):
@@ -1020,8 +1047,7 @@ async def execute(
     except HTTPException:
         raise
     except Exception as e:
-        logger.exception("Execute failed: %s", e)
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Execution failed: {e}")
+        _raise_sanitized_execution_http_error("Execute", e)
 
 
 @router.get("/{workflow_id}/export/cwl", response_class=Response)
@@ -1308,8 +1334,11 @@ async def execute_batch(
                     logger.warning(f"Failed to detect structure change in batch, saving snapshot: {e}")
                     workflow_snapshot = json.dumps(wf_v2)
 
-            store.create(execution_id, workflow_id, str(workspace_dir), workflow_snapshot)
-            execution_manager.create(execution_id, str(workspace_dir), workflow_id)
+            if not workflow_snapshot:
+                workflow_snapshot = json.dumps(wf_v2)
+
+            store.create(execution_id, workflow_id, str(workspace_dir), sample_id, workflow_snapshot)
+            execution_manager.create(execution_id, str(workspace_dir), workflow_id, persist=False)
             execution_manager.update_status(execution_id, "running", start_time=utc_now_iso_z())
             store.start(execution_id)
 
@@ -1363,11 +1392,7 @@ async def execute_batch(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Batch execution failed: {e}", exc_info=True)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Batch execution failed: {str(e)}"
-        )
+        _raise_sanitized_execution_http_error("Batch execution", e)
 
 
 @router.get("/{workflow_id}/latest-execution")
@@ -1402,4 +1427,43 @@ async def get_latest_execution(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to get latest execution: {str(e)}"
         )
+
+
+@router.get("/{workflow_id}/nodes/{node_id}/interactive-data/{selection_key}")
+async def get_workflow_interactive_data(
+    workflow_id: str,
+    node_id: str,
+    selection_key: str,
+    resolver: str = Query(..., description="Resolver name (e.g. topmsv_prsm)"),
+    port_id: Optional[str] = Query(None, description="Source output port (e.g. html_folder)"),
+    spectrum_id: Optional[int] = Query(None, description="Optional spectrum ID (for topmsv_prsm)"),
+    sample: Optional[str] = Query(None, description="Optional sample override for placeholder resolution"),
+    db=Depends(get_database),
+):
+    """
+    Workflow-level selection-driven interactive data endpoint.
+
+    This endpoint allows interactive viewers to load selection detail payloads
+    without an execution id. Resolver implementations are responsible for
+    fallback behavior when sample/workspace context is incomplete.
+    """
+    try:
+        registry = get_data_resolver_registry()
+        payload = registry.resolve(
+            name=resolver,
+            workflow_id=workflow_id,
+            node_id=node_id,
+            selection_key=selection_key,
+            db=db,
+            port_id=port_id,
+            spectrum_id=spectrum_id,
+            sample=sample,
+        )
+        return payload
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
+    except Exception as exc:
+        _raise_sanitized_execution_http_error("Load workflow interactive data", exc)
 

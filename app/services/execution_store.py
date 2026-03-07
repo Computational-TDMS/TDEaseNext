@@ -207,6 +207,26 @@ class ExecutionStore:
             row = cursor.fetchone()
             return dict(row) if row else None
 
+    def get_execution(self, execution_id: str) -> Optional[Dict[str, Any]]:
+        """
+        Get execution record by execution ID.
+
+        Returns:
+            Execution record dict or None when not found.
+        """
+        with self._conn() as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.execute(
+                """
+                SELECT id, workflow_id, sample_id, status, start_time, end_time, workspace_path, created_at
+                FROM executions
+                WHERE id=?
+                """,
+                (execution_id,),
+            )
+            row = cursor.fetchone()
+            return dict(row) if row else None
+
     def update_node_command_trace(
         self,
         execution_id: str,
@@ -221,8 +241,28 @@ class ExecutionStore:
             node_id: Frontend node ID
             command_trace: Structured command trace payload
         """
-        payload = json.dumps(command_trace, ensure_ascii=False)
         with self._conn() as conn:
+            existing_payload = None
+            try:
+                cursor = conn.execute(
+                    "SELECT command_trace FROM execution_nodes WHERE execution_id=? AND node_id=?",
+                    (execution_id, node_id),
+                )
+                row = cursor.fetchone()
+                existing_payload = row[0] if row else None
+            except Exception:
+                existing_payload = None
+
+            merged_trace = command_trace
+            if isinstance(existing_payload, str) and existing_payload.strip():
+                try:
+                    existing = json.loads(existing_payload)
+                    if isinstance(existing, dict):
+                        merged_trace = {**existing, **command_trace}
+                except Exception:
+                    merged_trace = command_trace
+
+            payload = json.dumps(merged_trace, ensure_ascii=False)
             conn.execute(
                 "UPDATE execution_nodes SET command_trace=? WHERE execution_id=? AND node_id=?",
                 (payload, execution_id, node_id),

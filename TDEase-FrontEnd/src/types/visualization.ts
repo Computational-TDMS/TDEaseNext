@@ -13,7 +13,8 @@ export type VisualizationType =
   | 'volcano'      // Volcano plot for differential expression
   | 'spectrum'     // Mass spectrum visualization
   | 'table'        // Data table with AG-Grid
-  | 'html'         // HTML fragment viewer (e.g., TopPIC PrSM views)
+  | 'topmsv_ms2'   // TopMSV-style PrSM MS2 peak viewer
+  | 'topmsv_sequence' // TopMSV-style sequence/modification viewer
 
 /**
  * Column definition for tabular data
@@ -215,17 +216,6 @@ export interface TableViewerConfig {
 }
 
 /**
- * HTML viewer specific configuration
- */
-export interface HtmlViewerConfig {
-  htmlFileId: string       // Node ID or file path containing HTML fragments
-  sourceNodeId?: string    // Alternative source node ID
-  enableFullscreen: boolean
-  enableExport: boolean
-  sandboxEnabled: boolean
-}
-
-/**
  * Color scheme identifiers
  */
 export type ColorSchemeId = 
@@ -301,7 +291,6 @@ export interface VisualizationConfig {
     | SpectrumConfig
     | FeatureMapConfig
     | TableViewerConfig
-    | HtmlViewerConfig
     | Record<string, unknown>
 }
 

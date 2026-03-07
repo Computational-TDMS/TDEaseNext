@@ -286,11 +286,36 @@ export class APIClient {
   private parseErrorResponse(data: unknown): APIError {
     if (typeof data === 'object' && data !== null) {
       const obj = data as Record<string, unknown>
+      const detail = obj.detail
+
+      let message = typeof obj.message === 'string' ? obj.message : ''
+      if (!message) {
+        if (typeof detail === 'string') {
+          message = detail
+        } else if (Array.isArray(detail)) {
+          message = detail
+            .map((item) => {
+              if (typeof item === 'string') return item
+              if (item && typeof item === 'object') {
+                const msg = (item as Record<string, unknown>).msg
+                return typeof msg === 'string' ? msg : JSON.stringify(item)
+              }
+              return String(item)
+            })
+            .join('; ')
+        } else if (detail && typeof detail === 'object') {
+          const msg = (detail as Record<string, unknown>).msg
+          if (typeof msg === 'string') {
+            message = msg
+          }
+        }
+      }
+
       return {
-        message: (obj.message as string) || 'Unknown error',
+        message: message || 'Unknown error',
         status: (obj.status as number) || 0,
         code: (obj.code as string) || 'UNKNOWN',
-        details: obj.details,
+        details: obj.details ?? detail ?? obj,
       }
     }
 

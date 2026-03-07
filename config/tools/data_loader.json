@@ -5,6 +5,21 @@
   "description": "Import raw data files into the workspace",
   "executionMode": "script",
   "useParamsJson": true,
+  "contextHooks": {
+    "enrichSampleContext": {
+      "extractFrom": "params.input_sources[0]",
+      "provide": {
+        "raw_path": "{value}",
+        "input_dir": "{parent}",
+        "input_basename": "{stem}",
+        "input_ext": "{suffix}",
+        "input_file": "{name}"
+      }
+    },
+    "injectParams": {
+      "sample_name": "{sample_context.sample}"
+    }
+  },
   "command": {
     "executable": "src/nodes/data_loader.py",
     "interpreter": "python"
@@ -15,9 +30,10 @@
         "id": "input_sources",
         "name": "Input Files",
         "dataType": "raw",
-        "required": true,
+        "required": false,
         "accept": ["raw", "mzml", "wiff", "d"],
-        "positional": false
+        "positional": false,
+        "description": "Supplied via params when no upstream edge; binding optional for entry-point nodes"
       }
     ],
     "outputs": [

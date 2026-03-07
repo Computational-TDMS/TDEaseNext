@@ -40,12 +40,12 @@
       }
     },
     {
-      "id": "html_1",
-      "type": "html_viewer",
+      "id": "topmsv_ms2_1",
+      "type": "topmsv_ms2_viewer",
       "data": {
-        "label": "HTML Viewer",
+        "label": "TopMSV MS2 Viewer",
         "visualizationConfig": {
-          "type": "html",
+          "type": "topmsv_ms2",
           "config": {}
         }
       }
@@ -61,11 +61,11 @@
       "connectionKind": "data"
     },
     {
-      "id": "edge-topfd-html",
+      "id": "edge-topfd-topmsv-ms2",
       "source": "topfd_1",
-      "target": "html_1",
+      "target": "topmsv_ms2_1",
       "sourceHandle": "output-html_folder",
-      "targetHandle": "input-html_data",
+      "targetHandle": "input-html_folder",
       "connectionKind": "data"
     },
     {
@@ -87,4 +87,3 @@
     }
   ]
 }
-

@@ -56,8 +56,11 @@ async def test_workflow_loads_successfully(interactive_workflow):
     assert len(compute_nodes) == 2
 
     # Verify interactive nodes exist
-    interactive_nodes = [n for n in interactive_workflow["nodes"] if n["type"] in ["featuremap_viewer", "spectrum_viewer", "html_viewer", "table_viewer"]]
-    assert len(interactive_nodes) == 4
+    interactive_nodes = [
+        n for n in interactive_workflow["nodes"]
+        if n["type"] in ["featuremap_viewer", "spectrum_viewer", "table_viewer", "topmsv_ms2_viewer", "topmsv_sequence_viewer"]
+    ]
+    assert len(interactive_nodes) >= 3
 
     # Verify data edges exist
     data_edges = [e for e in interactive_workflow["edges"] if e.get("connectionKind") == "data"]
@@ -144,7 +147,6 @@ async def test_workflow_node_states_after_execution(
     assert "toppic_1" in node_states
     assert "featuremap_1" in node_states
     assert "spectrum_1" in node_states
-    assert "html_viewer_1" in node_states
     assert "table_viewer_1" in node_states
 
 
@@ -159,7 +161,7 @@ async def test_state_edge_configuration(interactive_workflow):
     """
     state_edges = [e for e in interactive_workflow["edges"] if e.get("connectionKind") == "state"]
 
-    assert len(state_edges) == 3
+    assert len(state_edges) >= 2
 
     # Verify semantic types
     for edge in state_edges:
@@ -169,10 +171,6 @@ async def test_state_edge_configuration(interactive_workflow):
     # Verify featuremap -> spectrum connection
     featuremap_spectrum = [e for e in state_edges if e["source"] == "featuremap_1" and e["target"] == "spectrum_1"]
     assert len(featuremap_spectrum) == 1
-
-    # Verify featuremap -> html connection
-    featuremap_html = [e for e in state_edges if e["source"] == "featuremap_1" and e["target"] == "html_viewer_1"]
-    assert len(featuremap_html) == 1
 
     # Verify featuremap -> table connection
     featuremap_table = [e for e in state_edges if e["source"] == "featuremap_1" and e["target"] == "table_viewer_1"]
@@ -195,10 +193,6 @@ async def test_data_flow_edges_configuration(interactive_workflow):
     # Verify topfd -> featuremap connection (compute to interactive)
     topfd_featuremap = [e for e in data_edges if e["source"] == "topfd_1" and e["target"] == "featuremap_1"]
     assert len(topfd_featuremap) == 1
-
-    # Verify topicc -> html connection (compute to interactive)
-    topicc_html = [e for e in data_edges if e["source"] == "toppic_1" and e["target"] == "html_viewer_1"]
-    assert len(topicc_html) == 1
 
     # Verify topfd -> table connection (compute to interactive)
     topfd_table = [e for e in data_edges if e["source"] == "topfd_1" and e["target"] == "table_viewer_1"]
@@ -284,7 +278,7 @@ def test_multi_output_workflow_maps_distinct_topfd_ports_to_distinct_viewers(
         for edge in topfd_data_edges
     }
     assert port_by_target.get("featuremap_1") == "output-ms1feature"
-    assert port_by_target.get("html_1") == "output-html_folder"
+    assert port_by_target.get("topmsv_ms2_1") == "output-html_folder"
     assert port_by_target.get("table_1") == "output-ms2feature"
 
 

@@ -1,0 +1,48 @@
+{
+  "id": "topmsv_ms2_viewer",
+  "name": "TopMSV MS2 Viewer",
+  "version": "1.0.0",
+  "description": "Interactive MS2 spectrum viewer driven by PrSM table selections",
+  "executionMode": "interactive",
+  "interactiveBehavior": {
+    "dataPassthrough": true,
+    "stateEmitter": false,
+    "outputProduces": "state_only"
+  },
+  "command": {
+    "executable": "topmsv_ms2_viewer"
+  },
+  "selection_key_field": "Prsm ID",
+  "ports": {
+    "inputs": [
+      {
+        "id": "html_folder",
+        "name": "TopPIC HTML Folder",
+        "dataType": "html",
+        "required": true,
+        "accept": [
+          "html"
+        ],
+        "description": "TopPIC HTML output root folder (contains topfd/ms2_json and prsm js files)"
+      },
+      {
+        "id": "selection_in",
+        "name": "Selection In",
+        "dataType": "selection",
+        "required": false,
+        "portKind": "state-in",
+        "semanticType": "state/selection_ids",
+        "description": "Incoming PrSM selection payload"
+      }
+    ],
+    "outputs": []
+  },
+  "parameters": {},
+  "output": {
+    "flagSupported": false
+  },
+  "visualization": {
+    "type": "topmsv_ms2",
+    "dataSource": "file"
+  }
+}

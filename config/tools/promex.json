@@ -5,7 +5,7 @@
   "description": "ProMex: LC-MS feature extraction tool for detecting isotopomer envelopes of intact protein ions",
   "executionMode": "native",
   "command": {
-    "executable": "D:\\Projects\\TDEase-Backend\\InformedProteomics_Program\\ProMex.exe"
+    "executable": "ProMex"
   },
   "ports": {
     "inputs": [

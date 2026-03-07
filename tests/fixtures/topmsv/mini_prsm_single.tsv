@@ -1,0 +1,9 @@
+********************** Parameters **********************
+Protein database file:	test_db.fasta
+Spectrum file:	fake_ms2.msalign
+********************** Parameters **********************
+
+Data file name	Prsm ID	Spectrum ID	Fragmentation	Scan(s)	Retention time	Feature ID	Feature intensity	Protein accession	Protein description	Proteoform	Database protein sequence	Fixed PTMs	Unexpected modifications	Variable PTMs
+fake_ms2.msalign	100	10	ETD	500	12.3	2001	12345	P001	Protein one	[Acetyl]-ACD[+15.99]EFG	ACDEFG		+15.99:[3]	
+fake_ms2.msalign	101	11	HCD	501	12.4			P002	Protein two	PEPTIDE	PEPTIDE	Carbamidomethyl		Oxidation
+fake_ms2.msalign	102	999	ETD	999	12.5			P003	Protein three	MNOPQ	MNOPQ			

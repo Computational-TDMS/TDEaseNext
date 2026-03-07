@@ -4,7 +4,9 @@ WorkflowService - 工作流编排服务
 基于 FlowEngine + ToolRegistry + LocalExecutor 的原生工作流执行引擎。
 支持 dryrun、resume（断点续传）模式。
 """
+import json
 import logging
+import re
 import uuid
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
@@ -12,10 +14,14 @@ from typing import Any, Callable, Dict, List, Optional
 from app.core.engine import FlowEngine
 from app.core.engine.context import ExecutionContext
 from app.core.executor import LocalExecutor, MockExecutor, TaskSpec
-from app.services.input_binding_planner import plan_input_bindings
+from app.services.input_binding_planner import (
+    BindingDecision,
+    InputBindingContractError,
+    plan_input_bindings,
+)
 from app.services.tool_registry import get_tool_registry
 # 从 node_data_service 导入路径推导函数（保持向后兼容）
-from app.services.node_data_service import _resolve_output_paths
+from app.services.node_data_service import _get_output_patterns, _resolve_output_paths
 
 
 logger = logging.getLogger(__name__)
@@ -41,7 +47,10 @@ def _resolve_input_paths(
     workspace: Path,
     completed_outputs: Dict[str, List[Path]],
     target_tool_id: str = "",
-) -> Dict[str, Path]:
+    *,
+    enforce_contracts: bool = False,
+    return_diagnostics: bool = False,
+) -> Dict[str, Path] | tuple[Dict[str, Path], List[BindingDecision]]:
     """兼容包装：委托 InputBindingPlanner 解析输入绑定。"""
     _ = sample_ctx, workspace  # 保留签名兼容；规划器当前仅依赖结构化连接与已完成输出
     logger.info("[resolve_input_paths] Called for node=%s tool=%s", node_id, target_tool_id)
@@ -52,6 +61,7 @@ def _resolve_input_paths(
         tools_registry=tools_registry,
         completed_outputs=completed_outputs,
         target_tool_id=target_tool_id,
+        enforce_contracts=enforce_contracts,
     )
     for decision in decisions:
         logger.info(
@@ -67,50 +77,183 @@ def _resolve_input_paths(
             decision.selected_output_path,
         )
     logger.info("[resolve_input_paths] Final param_to_path for %s: %s", node_id, param_to_path)
+    if return_diagnostics:
+        return param_to_path, decisions
     return param_to_path
 
 
-def _enrich_sample_context_for_input_nodes(nodes: List[Dict[str, Any]], sample_ctx: Dict[str, str]) -> None:
-    """从 data_loader 等节点推导占位符，补全 sample_context."""
+def _get_nested(node_data: Dict[str, Any], path: str) -> Any:
+    """Resolve path like 'params.input_sources[0]' from node data (data.params.input_sources[0])."""
+    if not path.strip():
+        return None
+    parts = re.split(r"\.|\[|\]", path)
+    parts = [p.strip() for p in parts if p.strip()]
+    obj = node_data
+    for part in parts:
+        if obj is None:
+            return None
+        if part.isdigit():
+            idx = int(part)
+            if isinstance(obj, list) and 0 <= idx < len(obj):
+                obj = obj[idx]
+            else:
+                return None
+        else:
+            obj = obj.get(part) if isinstance(obj, dict) else None
+    return obj
+
+
+def _enrich_sample_context_from_hooks(
+    nodes: List[Dict[str, Any]],
+    sample_ctx: Dict[str, str],
+    tools_registry: Dict[str, Dict[str, Any]],
+) -> None:
+    """Apply contextHooks.enrichSampleContext from tool definitions to fill sample_ctx."""
     if not isinstance(sample_ctx, dict):
         return
 
     def _set_if_missing(key: str, value: Optional[str]) -> None:
-        if value and key not in sample_ctx:
+        if value is not None and key not in sample_ctx:
             sample_ctx[key] = value
 
     for node in nodes:
         data = node.get("data", {}) or {}
-        if data.get("type") != "data_loader":
+        tool_id = data.get("type", "")
+        if not tool_id:
             continue
-        params = data.get("params", {}) or {}
-        input_sources = params.get("input_sources") or params.get("input_source") or []
-        if isinstance(input_sources, str):
-            input_sources = [input_sources]
-        if not input_sources:
+        ti = tools_registry.get(tool_id, {})
+        hooks = ti.get("contextHooks") or {}
+        enrich = hooks.get("enrichSampleContext")
+        if not isinstance(enrich, dict):
             continue
-        first = Path(input_sources[0])
-        _set_if_missing("raw_path", str(first))
-        _set_if_missing("input_dir", str(first.parent))
-        _set_if_missing("input_basename", first.stem)
-        _set_if_missing("input_ext", first.suffix.lstrip("."))  # expect without dot
-        _set_if_missing("input_file", first.name)
+        extract_from = enrich.get("extractFrom")
+        provide = enrich.get("provide")
+        if not extract_from or not isinstance(provide, dict):
+            continue
+        value = _get_nested({"params": data.get("params", {})}, extract_from)
+        if value is None:
+            first_list = data.get("params", {}).get("input_sources") or data.get("params", {}).get("input_source")
+            if isinstance(first_list, str):
+                first_list = [first_list]
+            if isinstance(first_list, list) and first_list:
+                value = first_list[0]
+        if value is None or not str(value).strip():
+            continue
+        try:
+            first = Path(str(value))
+        except Exception:
+            continue
+        repl = {
+            "value": str(first),
+            "parent": str(first.parent),
+            "stem": first.stem,
+            "suffix": first.suffix.lstrip("."),
+            "name": first.name,
+        }
+        for ctx_key, tpl in provide.items():
+            if not isinstance(tpl, str):
+                continue
+            resolved = tpl
+            for k, v in repl.items():
+                resolved = resolved.replace("{" + k + "}", str(v))
+            _set_if_missing(ctx_key, resolved if resolved != tpl else resolved)
 
 
-def _should_skip_node_on_resume(output_paths: List[Path]) -> bool:
+def _apply_inject_params(
+    tool_info: Dict[str, Any],
+    params_node: Dict[str, Any],
+    sample_context: Dict[str, str],
+) -> Dict[str, Any]:
+    """Apply contextHooks.injectParams from tool definition; substitute {sample_context.*}."""
+    inject = (tool_info.get("contextHooks") or {}).get("injectParams")
+    if not isinstance(inject, dict):
+        return params_node
+    out = dict(params_node)
+    for key, tpl in inject.items():
+        if not isinstance(tpl, str):
+            continue
+        resolved = tpl
+        for k, v in (sample_context or {}).items():
+            resolved = resolved.replace("{sample_context." + k + "}", str(v))
+        if resolved != tpl or key not in out:
+            out[key] = resolved
+    return out
+
+
+def _node_resume_manifest_path(workspace: Path, node_id: str) -> Path:
+    return workspace / ".tdease_resume" / f"{node_id}.json"
+
+
+def _resolve_required_output_paths(tool_info: Dict[str, Any], output_paths: List[Path]) -> List[Path]:
+    if not output_paths:
+        return []
+
+    outputs = tool_info.get("ports", {}).get("outputs", [])
+    by_handle: Dict[str, Dict[str, Any]] = {}
+    for out in outputs:
+        if not isinstance(out, dict):
+            continue
+        key = str(out.get("handle") or out.get("id") or "").strip().lower()
+        if key:
+            by_handle[key] = out
+
+    patterns = _get_output_patterns(tool_info)
+    required_paths: List[Path] = []
+    for idx, path in enumerate(output_paths):
+        pattern_item = patterns[idx] if idx < len(patterns) else {}
+        handle = str((pattern_item or {}).get("handle") or (pattern_item or {}).get("id") or "").strip().lower()
+        output_def = by_handle.get(handle) if handle else None
+        is_required = True if output_def is None else bool(output_def.get("required", True))
+        if is_required:
+            required_paths.append(path)
+
+    return required_paths or list(output_paths)
+
+
+def _write_resume_manifest(
+    manifest_path: Path,
+    *,
+    node_id: str,
+    required_outputs: List[Path],
+    all_outputs: List[Path],
+) -> None:
+    payload = {
+        "node_id": node_id,
+        "completed": True,
+        "required_outputs": [str(p) for p in required_outputs],
+        "all_outputs": [str(p) for p in all_outputs],
+    }
+    manifest_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(manifest_path, "w", encoding="utf-8") as fp:
+        json.dump(payload, fp, ensure_ascii=False)
+
+
+def _should_skip_node_on_resume(
+    output_paths: List[Path],
+    *,
+    required_output_paths: Optional[List[Path]] = None,
+    completion_manifest: Optional[Path] = None,
+) -> bool:
     """
     Resume skip policy:
-    - no resolved outputs: cannot skip
-    - at least one resolved output exists: treat node as already done
-
-    Why "any" instead of "all":
-    Some tools (e.g. MSPathFinderT) declare multiple conditional outputs, and
-    only a subset is produced in a normal run. Requiring all outputs would
-    incorrectly re-run already completed nodes.
+    - manifest present + required outputs complete: skip
+    - otherwise require all required outputs to exist
     """
-    if not output_paths:
+    required_paths = list(required_output_paths or output_paths)
+    if not required_paths:
         return False
-    return any(p.exists() for p in output_paths)
+
+    if completion_manifest and completion_manifest.exists():
+        try:
+            with open(completion_manifest, "r", encoding="utf-8") as fp:
+                payload = json.load(fp)
+            if payload.get("completed") is True:
+                manifest_required = payload.get("required_outputs") or [str(p) for p in required_paths]
+                return all(Path(p).exists() for p in manifest_required)
+        except Exception:
+            logger.warning("Invalid resume manifest at %s", completion_manifest)
+
+    return all(p.exists() for p in required_paths)
 
 
 class WorkflowService:
@@ -128,6 +271,66 @@ class WorkflowService:
         self.executor = executor or LocalExecutor(self.tools)
         self.execution_store = execution_store
         self.execution_manager = execution_manager  # 用于注册节点状态以支持取消操作
+
+    def _serialize_binding_decisions(self, decisions: List[BindingDecision]) -> List[Dict[str, Any]]:
+        return [
+            {
+                "edge_id": decision.edge_id,
+                "source_node_id": decision.source_node_id,
+                "resolved_source_node_id": decision.resolved_source_node_id,
+                "target_port_id": decision.target_port_id,
+                "source_handle": decision.source_handle,
+                "target_handle": decision.target_handle,
+                "selected_output_index": decision.selected_output_index,
+                "selected_output_path": decision.selected_output_path,
+                "score": decision.score,
+                "reason": decision.reason,
+                "status": decision.status,
+            }
+            for decision in decisions
+        ]
+
+    def _persist_binding_trace(
+        self,
+        *,
+        execution_id: Optional[str],
+        node_id: str,
+        tool_id: str,
+        decisions: List[BindingDecision],
+        contract_error: Optional[InputBindingContractError] = None,
+    ) -> None:
+        if not self.execution_store or not execution_id:
+            return
+
+        payload: Dict[str, Any] = {
+            "node_id": node_id,
+            "tool_id": tool_id,
+            "input_binding": {
+                "status": "ok" if contract_error is None else "failed",
+                "decisions": self._serialize_binding_decisions(decisions),
+            },
+        }
+        if contract_error is not None:
+            payload["input_binding"]["error"] = contract_error.to_dict()
+
+        try:
+            self.execution_store.update_node_command_trace(execution_id, node_id, payload)
+        except Exception as exc:
+            logger.warning("Persist binding diagnostics failed for node %s: %s", node_id, exc)
+
+    def _persist_node_failure(self, execution_id: Optional[str], node_id: str, error_message: str) -> None:
+        if not self.execution_store or not execution_id:
+            return
+        try:
+            self.execution_store.update_node_status(
+                execution_id,
+                node_id,
+                "failed",
+                progress=0,
+                error_message=error_message,
+            )
+        except Exception as exc:
+            logger.warning("Persist node failure failed for node %s: %s", node_id, exc)
 
     def __build_task_spec(
         self,
@@ -152,16 +355,34 @@ class WorkflowService:
 
         params_node = node_data.get("params", {})
         out_paths = _resolve_output_paths(nid, tool_id, ti, c.sample_context, c.workspace_path)
-        input_files_dict = _resolve_input_paths(
-            nid,
-            edges or [],
-            nodes_map or {},
-            self.tools,
-            c.sample_context,
-            c.workspace_path,
-            completed_outputs or {},
-            target_tool_id=tool_id,
-        )
+        try:
+            input_files_dict, binding_decisions = _resolve_input_paths(
+                nid,
+                edges or [],
+                nodes_map or {},
+                self.tools,
+                c.sample_context,
+                c.workspace_path,
+                completed_outputs or {},
+                target_tool_id=tool_id,
+                enforce_contracts=True,
+                return_diagnostics=True,
+            )
+            self._persist_binding_trace(
+                execution_id=c.execution_id,
+                node_id=nid,
+                tool_id=tool_id,
+                decisions=binding_decisions,
+            )
+        except InputBindingContractError as contract_error:
+            self._persist_binding_trace(
+                execution_id=c.execution_id,
+                node_id=nid,
+                tool_id=tool_id,
+                decisions=contract_error.decisions,
+                contract_error=contract_error,
+            )
+            raise
         logger.info(f"[WorkflowService] Resolved input_files_dict for node {nid}: {input_files_dict}")
 
         positional_ids = _get_positional_input_ids(ti)
@@ -170,8 +391,7 @@ class WorkflowService:
         else:
             in_paths = list(input_files_dict.values())
 
-        if tool_id == "data_loader":
-            params_node = {**params_node, "sample_name": c.sample_context.get("sample", "")}
+        params_node = _apply_inject_params(ti, params_node, c.sample_context)
 
         return TaskSpec(
             node_id=nid,
@@ -215,7 +435,7 @@ class WorkflowService:
 
         params = parameters or {}
         sample_ctx = params.get("sample_context", {}) or {"sample": params.get("sample", "default")}
-        _enrich_sample_context_for_input_nodes(wf.get("nodes", []), sample_ctx)
+        _enrich_sample_context_from_hooks(wf.get("nodes", []), sample_ctx, self.tools)
 
         ex_id = execution_id or str(uuid.uuid4())
         executor = MockExecutor(self.tools) if simulate else self.executor
@@ -238,7 +458,13 @@ class WorkflowService:
             tool_id = node_data.get("type", "")
             ti = self.tools.get(tool_id, {})
             paths = _resolve_output_paths(node_id, tool_id, ti, c.sample_context, c.workspace_path)
-            return _should_skip_node_on_resume(paths)
+            required_paths = _resolve_required_output_paths(ti, paths)
+            manifest = _node_resume_manifest_path(c.workspace_path, node_id)
+            return _should_skip_node_on_resume(
+                paths,
+                required_output_paths=required_paths,
+                completion_manifest=manifest,
+            )
 
         def build_task_spec(nid: str, node_data: Dict, c: ExecutionContext) -> Optional[TaskSpec]:
             return self.__build_task_spec(
@@ -251,7 +477,11 @@ class WorkflowService:
             )
 
         async def execute_fn(nid: str, node_data: Dict, c: ExecutionContext) -> None:
-            spec = build_task_spec(nid, node_data, c)
+            try:
+                spec = build_task_spec(nid, node_data, c)
+            except Exception as exc:
+                self._persist_node_failure(c.execution_id, nid, str(exc))
+                raise
 
             # 跳过交互式节点 (返回 None 的 spec)
             if spec is None:
@@ -266,7 +496,19 @@ class WorkflowService:
                 await executor.execute(spec)
                 tool_id = node_data.get("type", "")
                 ti = self.tools.get(tool_id, {})
-                completed_outputs[nid] = _resolve_output_paths(nid, tool_id, ti, c.sample_context, c.workspace_path)
+                output_paths = _resolve_output_paths(nid, tool_id, ti, c.sample_context, c.workspace_path)
+                completed_outputs[nid] = output_paths
+                required_paths = _resolve_required_output_paths(ti, output_paths)
+                manifest_path = _node_resume_manifest_path(c.workspace_path, nid)
+                _write_resume_manifest(
+                    manifest_path,
+                    node_id=nid,
+                    required_outputs=required_paths,
+                    all_outputs=output_paths,
+                )
+            except Exception as exc:
+                self._persist_node_failure(c.execution_id, nid, str(exc))
+                raise
             finally:
                 # 注册节点完成（用于取消操作）
                 if self.execution_manager and c.execution_id:

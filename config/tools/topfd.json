@@ -5,7 +5,7 @@
   "description": "TopFD: Deconvolute mass spectra and generate MSAlign files",
   "executionMode": "native",
   "command": {
-    "executable": "D:\\Projects\\TDEase-Backend\\toppic-windows-1.8.0\\topfd.exe"
+    "executable": "topfd"
   },
   "ports": {
     "inputs": [

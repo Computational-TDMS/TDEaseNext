@@ -1,5 +1,29 @@
 # 测试指南 / Testing Guide
 
+## 推荐测试车道（Mock 回归 vs 生产烟雾）
+
+```bash
+# 1) 快速回归（默认本地开发）
+uv run pytest -m "not prod_smoke" -v
+
+# 2) 生产烟雾（真实 TopFD/TopPIC 链路）
+uv run pytest tests/smoke/test_real_tool_compute_chain.py -m prod_smoke -v -rs
+```
+
+生产烟雾测试默认会检查前置条件，不满足时会 `skip` 并给出明确原因。  
+可通过环境变量提供夹具路径：
+
+```bash
+$env:TDEASE_SMOKE_MZML="D:\\fixtures\\prod\\sample.mzML"
+$env:TDEASE_SMOKE_FASTA="D:\\fixtures\\prod\\sample.fasta"
+```
+
+工具可执行路径采用“共享可移植 + 本地覆盖”策略：
+
+- `config/tools/*.json` 保持可移植命令名（不提交机器绝对路径）。
+- 如需本机绝对路径，写入 `data/tools/<tool_id>.json`（`data/` 不入库）。
+- 可选 profile 叠加通过 `TDEASE_TOOL_PROFILE` / `TDEASE_TOOL_PROFILES` 指定。
+
 ## ABC 工作流执行测试 (Mock 工具链)
 
 用于验证后端 FlowEngine + LocalExecutor 的真实执行路径，使用 A -> B -> C 三个 Python 脚本模拟工具链。
@@ -43,6 +67,21 @@ uv run python -m pytest tests/test_execution_store_command_trace.py tests/test_e
 - `tests/fixtures/tools/mock_source_tool.py`
 - `tests/fixtures/tools/mock_pbfgen_tool.py`
 - `tests/fixtures/tools/mock_echo_argv_tool.py`
+
+### 必填输入严格校验（Fail-Fast）
+
+当前执行路径会在命令组装前校验 required 输入端口：
+
+- required 端口无绑定：节点直接失败（不会执行命令）。
+- required 单输入端口出现多候选绑定：节点以歧义错误失败（不会隐式挑选）。
+- 绑定决策与失败原因会写入节点 `command_trace.input_binding`，可通过  
+  `GET /api/executions/{execution_id}/nodes/{node_id}/trace` 查询。
+
+对旧工作流迁移建议：
+
+- 为每个 required 输入补齐明确 edge（尤其是 `targetHandle`）。
+- 避免同一 required 单输入端口挂多条并行上游边。
+- 对历史“模糊匹配才可运行”的流程，先在测试环境修正连接再升级到新规则。
 
 ### 依赖与结构
 
@@ -150,6 +189,8 @@ curl -X POST http://localhost:8000/api/workflows/execute \
 2. **查看API日志**: 检查终端输出的日志
 3. **检查数据库**: SQLite数据库在 `data/database.db`
 4. **查看执行日志**: 通过 `/api/executions/{execution_id}/logs` 端点
+5. **生产烟雾被跳过**: 使用 `-rs` 查看 skip 原因，补齐 TopFD/TopPIC 可执行文件和 `TDEASE_SMOKE_MZML` / `TDEASE_SMOKE_FASTA`
+6. **pytest 收集失败（权限拒绝）**: 清理或避免遍历临时目录（如 `tests/fixtures/tmp_pytest`、`pytest-cache-files-*`）
 
 ### 示例：快速测试
 

@@ -1,18 +1,122 @@
 """
 Tool Registry - 工具注册中心
 
-从 data/tools/ 和 config/tools/ 加载 JSON 定义，提供统一查询接口。
-工具配置由后端运行环境决定，支持用户自定义工具。
+从 config/tools/、config/tools/profiles/<profile>/ 和 data/tools/ 加载 JSON 定义，
+提供统一查询接口。支持环境 profile 覆盖与本地 data 覆盖。
 """
 import json
 import logging
+import os
+import re
+from copy import deepcopy
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
 from app.schemas.tool import ToolDefinition
 from jsonschema import validate, ValidationError
 
 logger = logging.getLogger(__name__)
+
+_ENV_PROFILE_KEYS: Tuple[str, ...] = ("TDEASE_TOOL_PROFILES", "TDEASE_TOOL_PROFILE")
+_WINDOWS_ABSOLUTE_RE = re.compile(r"^(?:[A-Za-z]:[\\/]|\\\\|\\\\\?\\)")
+
+
+class NonPortableToolConfigError(ValueError):
+    """Raised when shared config contains machine-local absolute executable paths."""
+
+
+def _is_absolute_machine_path(value: str) -> bool:
+    literal = value.strip()
+    if not literal:
+        return False
+
+    # Environment-variable based indirection is allowed in shared config.
+    if literal.startswith(("${", "$", "%", "{")):
+        return False
+    # Relative references are portable.
+    if literal.startswith(("./", "../", ".\\", "..\\")):
+        return False
+
+    if _WINDOWS_ABSOLUTE_RE.match(literal):
+        return True
+    return literal.startswith("/")
+
+
+def _deep_merge_dict(base: Dict[str, Any], override: Dict[str, Any]) -> Dict[str, Any]:
+    merged = deepcopy(base)
+    for key, value in override.items():
+        if isinstance(value, dict) and isinstance(merged.get(key), dict):
+            merged[key] = _deep_merge_dict(merged[key], value)
+        else:
+            merged[key] = deepcopy(value)
+    return merged
+
+
+def _extract_executable(tool_data: Dict[str, Any]) -> str:
+    command = tool_data.get("command")
+    if isinstance(command, dict):
+        executable = command.get("executable")
+        if isinstance(executable, str):
+            return executable
+    tool_path = tool_data.get("toolPath") or tool_data.get("tool_path")
+    return str(tool_path) if isinstance(tool_path, str) else ""
+
+
+def _validate_portable_shared_tool(tool_data: Dict[str, Any], *, source: str) -> None:
+    executable = _extract_executable(tool_data)
+    if executable and _is_absolute_machine_path(executable):
+        tool_id = tool_data.get("id") or "<unknown>"
+        raise NonPortableToolConfigError(
+            f"Tool '{tool_id}' in {source} uses non-portable absolute executable path: {executable}. "
+            "Use command names in shared config and put machine-specific absolute overrides in data/tools/*.json."
+        )
+
+
+def _parse_profiles(profile: Optional[str | Sequence[str]]) -> List[str]:
+    raw: List[str] = []
+    if profile is None:
+        for env_key in _ENV_PROFILE_KEYS:
+            env_value = os.environ.get(env_key, "")
+            if env_value:
+                raw.extend(env_value.split(","))
+    elif isinstance(profile, str):
+        raw.extend(profile.split(","))
+    else:
+        for item in profile:
+            raw.extend(str(item).split(","))
+
+    ordered: List[str] = []
+    seen = set()
+    for item in raw:
+        normalized = item.strip()
+        if not normalized or normalized in seen:
+            continue
+        ordered.append(normalized)
+        seen.add(normalized)
+    return ordered
+
+
+def _parse_tool_entries(file_path: Path, payload: Dict[str, Any]) -> Iterable[Tuple[str, Dict[str, Any]]]:
+    # 兼容单工具格式：{ "id": "...", ... }
+    if "id" in payload:
+        tool_id = str(payload["id"])
+        normalized = dict(payload)
+        normalized["id"] = tool_id
+        yield tool_id, normalized
+        return
+
+    # 兼容文件名同名嵌套格式：{ "<file_stem>": { ... } }
+    if file_path.stem in payload and isinstance(payload[file_path.stem], dict):
+        tool_id = file_path.stem
+        nested = dict(payload[file_path.stem])
+        nested.setdefault("id", tool_id)
+        yield tool_id, nested
+        return
+
+    # 兜底：将当前对象视作工具定义，ID 取文件名
+    fallback = dict(payload)
+    fallback.setdefault("id", file_path.stem)
+    yield str(fallback["id"]), fallback
 
 
 def _project_root() -> Path:
@@ -84,65 +188,117 @@ class ToolRegistry:
     """
     工具注册中心
 
-    加载顺序：config/tools/*.json -> data/tools/*.json
-    后者覆盖前者（同 id 时）。
+    加载顺序（优先级从低到高）：
+    1. config/tools/*.json
+    2. config/tools/profiles/<profile>/*.json（按 profile 列表顺序叠加）
+    3. data/tools/*.json
     """
 
     def __init__(
         self,
         config_tools_dir: Optional[Path] = None,
         data_tools_dir: Optional[Path] = None,
+        profiles: Optional[str | Sequence[str]] = None,
+        config_profiles_dir: Optional[Path] = None,
     ):
         root = _project_root()
         self._config_tools = config_tools_dir or (root / "config" / "tools")
+        self._config_profiles = config_profiles_dir or (self._config_tools / "profiles")
         self._data_tools = data_tools_dir or (root / "data" / "tools")
+        self._profiles = _parse_profiles(profiles)
         self._registry: Dict[str, Dict[str, Any]] = {}
         self._definitions: Dict[str, ToolDefinition] = {}
         self._validation_schema = _load_validation_schema()
         self.reload()
+
+    @property
+    def active_profiles(self) -> List[str]:
+        return list(self._profiles)
+
+    def _load_tool_layer(
+        self,
+        dir_path: Path,
+        *,
+        source_label: str,
+        validate_portability: bool,
+    ) -> Dict[str, Dict[str, Any]]:
+        loaded: Dict[str, Dict[str, Any]] = {}
+        if not dir_path.exists() or not dir_path.is_dir():
+            return loaded
+
+        for fp in sorted(dir_path.glob("*.json")):
+            try:
+                with open(fp, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                if not isinstance(data, dict):
+                    logger.warning("Load tool file %s failed: root JSON must be object", fp)
+                    continue
+
+                for tool_id, raw_tool in _parse_tool_entries(fp, data):
+                    if validate_portability:
+                        _validate_portable_shared_tool(raw_tool, source=f"{source_label}/{fp.name}")
+                    loaded[tool_id] = raw_tool
+            except NonPortableToolConfigError as e:
+                logger.warning(str(e))
+            except Exception as e:
+                logger.warning("Load tool file %s failed: %s", fp, e)
+        return loaded
 
     def reload(self) -> None:
         """重新加载所有工具定义"""
         self._registry.clear()
         self._definitions.clear()
 
-        for dir_path in (self._config_tools, self._data_tools):
-            if not dir_path.exists() or not dir_path.is_dir():
+        # Layer 1: shared base config (portable by design)
+        merged = self._load_tool_layer(
+            self._config_tools,
+            source_label="config/tools",
+            validate_portability=True,
+        )
+
+        # Layer 2: shared profile overrides (also must stay portable in repo)
+        for profile in self._profiles:
+            profile_dir = self._config_profiles / profile
+            if not profile_dir.exists():
+                logger.warning("Tool profile '%s' not found at %s", profile, profile_dir)
                 continue
-            for fp in dir_path.glob("*.json"):
+            overrides = self._load_tool_layer(
+                profile_dir,
+                source_label=f"config/tools/profiles/{profile}",
+                validate_portability=True,
+            )
+            for tool_id, override_tool in overrides.items():
+                if tool_id in merged:
+                    merged[tool_id] = _deep_merge_dict(merged[tool_id], override_tool)
+                else:
+                    merged[tool_id] = override_tool
+
+        # Layer 3: local data overrides (machine-specific paths are allowed)
+        local_overrides = self._load_tool_layer(
+            self._data_tools,
+            source_label="data/tools",
+            validate_portability=False,
+        )
+        for tool_id, override_tool in local_overrides.items():
+            if tool_id in merged:
+                merged[tool_id] = _deep_merge_dict(merged[tool_id], override_tool)
+            else:
+                merged[tool_id] = override_tool
+
+        for tool_id, raw_tool in merged.items():
+            try:
+                normalized = _normalize_tool_data(raw_tool)
+                normalized["id"] = tool_id
+                if not _validate_tool_definition(normalized, self._validation_schema):
+                    logger.warning("Skipping tool '%s' due to validation errors", tool_id)
+                    continue
+                self._registry[tool_id] = normalized
                 try:
-                    with open(fp, "r", encoding="utf-8") as f:
-                        data = json.load(f)
-                    if not isinstance(data, dict):
-                        continue
-                    # 支持单工具 { "id": "x", ... } 或多工具 { "tool_id": { ... } }
-                    if "id" in data:
-                        tool_id = data["id"]
-                        normalized = _normalize_tool_data(data)
-                        # Validate against schema if available
-                        if not _validate_tool_definition(normalized, self._validation_schema):
-                            logger.warning("Skipping tool '%s' due to validation errors", tool_id)
-                            continue
-                        self._registry[tool_id] = normalized
-                        try:
-                            self._definitions[tool_id] = ToolDefinition(**normalized)
-                        except Exception as e:
-                            logger.warning("ToolDefinition parse skip %s: %s", tool_id, e)
-                    elif fp.stem in data and isinstance(data[fp.stem], dict):
-                        tool_id = fp.stem
-                        normalized = _normalize_tool_data(data[fp.stem])
-                        normalized.setdefault("id", tool_id)
-                        # Validate against schema if available
-                        if not _validate_tool_definition(normalized, self._validation_schema):
-                            logger.warning("Skipping tool '%s' due to validation errors", tool_id)
-                            continue
-                        self._registry[tool_id] = normalized
-                        try:
-                            self._definitions[tool_id] = ToolDefinition(**normalized)
-                        except Exception as e:
-                            logger.warning("ToolDefinition parse skip %s: %s", tool_id, e)
+                    self._definitions[tool_id] = ToolDefinition(**normalized)
                 except Exception as e:
-                    logger.warning("Load tool file %s failed: %s", fp, e)
+                    logger.warning("ToolDefinition parse skip %s: %s", tool_id, e)
+            except Exception as e:
+                logger.warning("Normalize tool '%s' failed: %s", tool_id, e)
 
     def get(self, tool_id: str) -> Optional[Dict[str, Any]]:
         """获取工具原始数据（兼容旧代码）"""

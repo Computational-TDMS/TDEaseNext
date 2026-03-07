@@ -100,7 +100,7 @@ watch(() => props.config, (val) => { localConfig.value = val || {} }, { deep: tr
 watch(() => props.colorScheme, (val) => { localColorScheme.value = val || 'viridis' })
 
 const shouldShowColumnConfig = computed(() => {
-  return !['table', 'heatmap', 'volcano', 'html'].includes(props.visualizationType || '')
+  return !['table', 'heatmap', 'volcano'].includes(props.visualizationType || '')
 })
 
 const numericColumns = computed(() => {

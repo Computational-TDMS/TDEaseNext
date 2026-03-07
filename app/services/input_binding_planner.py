@@ -1,7 +1,7 @@
 """Input binding planner for workflow edges -> tool input ports."""
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass, field, replace
 import logging
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple
@@ -24,6 +24,45 @@ class BindingDecision:
     score: int
     reason: str
     status: str
+
+
+@dataclass
+class BindingViolation:
+    code: str
+    node_id: str
+    tool_id: str
+    port_id: str
+    message: str
+    details: Dict[str, Any] = field(default_factory=dict)
+
+
+class InputBindingContractError(RuntimeError):
+    error_code = "INPUT_BINDING_CONTRACT_VIOLATION"
+
+    def __init__(
+        self,
+        *,
+        node_id: str,
+        tool_id: str,
+        violations: List[BindingViolation],
+        decisions: List[BindingDecision],
+    ) -> None:
+        self.node_id = node_id
+        self.tool_id = tool_id
+        self.violations = violations
+        self.decisions = decisions
+        summary = "; ".join(v.message for v in violations) if violations else "Input binding contract violation"
+        super().__init__(summary)
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "code": self.error_code,
+            "node_id": self.node_id,
+            "tool_id": self.tool_id,
+            "message": str(self),
+            "violations": [asdict(v) for v in self.violations],
+            "decisions": [asdict(d) for d in self.decisions],
+        }
 
 
 def _normalize_token(value: str) -> str:
@@ -107,6 +146,14 @@ def _resolve_target_port_id(target_handle: str, target_inputs: List[Dict[str, An
         return target_inputs[0].get("id", "")
 
     return target_handle
+
+
+def _allows_multi_input(input_def: Dict[str, Any]) -> bool:
+    return bool(
+        input_def.get("multiInput")
+        or input_def.get("multiple")
+        or input_def.get("allowMultiple")
+    )
 
 
 def _select_source_output_index(
@@ -208,13 +255,21 @@ def plan_input_bindings(
     tools_registry: Dict[str, Dict[str, Any]],
     completed_outputs: Dict[str, List[Path]],
     target_tool_id: str = "",
+    enforce_contracts: bool = False,
 ) -> Tuple[Dict[str, Path], List[BindingDecision]]:
     """Compute input binding plan: target_port_id -> selected upstream path."""
     param_to_path: Dict[str, Path] = {}
     decisions: List[BindingDecision] = []
+    violations: List[BindingViolation] = []
+    candidates_by_port: Dict[str, List[BindingDecision]] = {}
 
     target_info = tools_registry.get(target_tool_id, {}) if target_tool_id else {}
     target_inputs = target_info.get("ports", {}).get("inputs", [])
+    target_input_by_id = {
+        _normalize_token(inp.get("id", "")): inp
+        for inp in target_inputs
+        if isinstance(inp, dict)
+    }
 
     def find_real_source(src_id: str, visited: Set[str]) -> Optional[str]:
         if src_id in visited:
@@ -228,6 +283,10 @@ def plan_input_bindings(
         src_tool_id = (src_node.get("data", {}) or {}).get("type", "")
         src_info = tools_registry.get(src_tool_id, {})
         if src_info.get("executionMode") != "interactive":
+            return None
+        # Explicit dataPassthrough: only traverse when true (default true for backward compat)
+        interactive_behavior = src_info.get("interactiveBehavior") or {}
+        if interactive_behavior.get("dataPassthrough") is False:
             return None
 
         for edge in edges:
@@ -324,21 +383,106 @@ def plan_input_bindings(
             continue
 
         selected_path = src_outputs[idx]
-        param_to_path[target_port_id] = selected_path
-        decisions.append(
-            BindingDecision(
-                edge_id=edge_id,
-                source_node_id=source_id,
-                resolved_source_node_id=real_source_id,
-                target_port_id=target_port_id,
-                source_handle=src_handle,
-                target_handle=tgt_handle,
-                selected_output_index=idx,
-                selected_output_path=str(selected_path),
-                score=score,
-                reason=reason,
-                status="bound",
+        decision = BindingDecision(
+            edge_id=edge_id,
+            source_node_id=source_id,
+            resolved_source_node_id=real_source_id,
+            target_port_id=target_port_id,
+            source_handle=src_handle,
+            target_handle=tgt_handle,
+            selected_output_index=idx,
+            selected_output_path=str(selected_path),
+            score=score,
+            reason=reason,
+            status="candidate",
+        )
+        candidates_by_port.setdefault(target_port_id, []).append(decision)
+
+    for target_port_id, port_candidates in candidates_by_port.items():
+        ranked = sorted(
+            port_candidates,
+            key=lambda c: (-c.score, c.edge_id, c.selected_output_index or -1, c.selected_output_path),
+        )
+        input_def = target_input_by_id.get(_normalize_token(target_port_id), {})
+        is_required = bool(input_def.get("required"))
+        is_multi = _allows_multi_input(input_def)
+
+        if enforce_contracts and is_required and not is_multi and len(ranked) > 1:
+            details = {
+                "candidates": [
+                    {
+                        "edge_id": candidate.edge_id,
+                        "source_node_id": candidate.source_node_id,
+                        "resolved_source_node_id": candidate.resolved_source_node_id,
+                        "score": candidate.score,
+                        "selected_output_path": candidate.selected_output_path,
+                        "reason": candidate.reason,
+                    }
+                    for candidate in ranked
+                ]
+            }
+            violations.append(
+                BindingViolation(
+                    code="AMBIGUOUS_REQUIRED_INPUT",
+                    node_id=node_id,
+                    tool_id=target_tool_id,
+                    port_id=target_port_id,
+                    message=f"Ambiguous required input binding for port '{target_port_id}'",
+                    details=details,
+                )
             )
+            for candidate in ranked:
+                decisions.append(
+                    replace(candidate, status="skipped", reason="ambiguous-required-input")
+                )
+            continue
+
+        winner = ranked[0]
+        param_to_path[target_port_id] = Path(winner.selected_output_path)
+        decisions.append(replace(winner, status="bound", reason=winner.reason))
+        for candidate in ranked[1:]:
+            decisions.append(
+                replace(candidate, status="skipped", reason="lower-score-than-selected")
+            )
+
+    if enforce_contracts:
+        for input_def in target_inputs:
+            if not isinstance(input_def, dict):
+                continue
+            target_port_id = str(input_def.get("id", "") or "").strip()
+            if not target_port_id or not input_def.get("required"):
+                continue
+            if target_port_id in param_to_path:
+                continue
+
+            candidate_brief = [
+                {
+                    "edge_id": decision.edge_id,
+                    "status": decision.status,
+                    "reason": decision.reason,
+                    "score": decision.score,
+                }
+                for decision in decisions
+                if _normalize_token(decision.target_port_id) == _normalize_token(target_port_id)
+            ]
+            details = {"candidates": candidate_brief}
+            violations.append(
+                BindingViolation(
+                    code="MISSING_REQUIRED_INPUT",
+                    node_id=node_id,
+                    tool_id=target_tool_id,
+                    port_id=target_port_id,
+                    message=f"Missing required input binding for port '{target_port_id}'",
+                    details=details,
+                )
+            )
+
+    if enforce_contracts and violations:
+        raise InputBindingContractError(
+            node_id=node_id,
+            tool_id=target_tool_id,
+            violations=violations,
+            decisions=decisions,
         )
 
     logger.debug(

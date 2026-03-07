@@ -52,12 +52,16 @@ class WorkflowNormalizer:
             else:
                 tgt_id = tgt
                 tgt_handle = c.get("targetHandle")
+            connection_kind = c.get("connectionKind") or c.get("connection_kind") or "data"
+            semantic_type = c.get("semanticType") or c.get("semantic_type")
             edges.append({
                 "id": c.get("id"),
                 "source": src_id,
                 "target": tgt_id,
                 "sourceHandle": self._normalize_handle(src_handle),
                 "targetHandle": self._normalize_handle(tgt_handle),
+                "connectionKind": connection_kind,
+                "semanticType": semantic_type,
             })
         wf["edges"] = edges
         

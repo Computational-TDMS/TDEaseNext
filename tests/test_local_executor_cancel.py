@@ -8,8 +8,17 @@ import asyncio
 import subprocess
 import sys
 from pathlib import Path
+from uuid import uuid4
 from app.core.executor.local import LocalExecutor
 from app.core.executor.base import TaskSpec
+
+
+def _make_workspace_dir() -> Path:
+    base = Path("data") / "test_tmp_dirs"
+    base.mkdir(parents=True, exist_ok=True)
+    path = (base / f"local_executor_{uuid4().hex}").resolve()
+    path.mkdir(parents=True, exist_ok=True)
+    return path
 
 
 class TestLocalExecutorCancel:
@@ -18,7 +27,16 @@ class TestLocalExecutorCancel:
     @pytest.fixture
     def executor(self):
         """Create LocalExecutor instance"""
-        tools_registry = {}
+        tools_registry = {
+            "test-tool": {
+                "id": "test-tool",
+                "executionMode": "native",
+                "command": {"executable": sys.executable},
+                "ports": {"inputs": [], "outputs": []},
+                "parameters": {},
+                "output": {"flagSupported": False},
+            }
+        }
         return LocalExecutor(tools_registry)
 
     @pytest.mark.asyncio
@@ -46,27 +64,27 @@ class TestLocalExecutorCancel:
         assert proc.poll() is not None
 
     @pytest.mark.asyncio
-    async def test_execute_with_task_id(self, executor, tmp_path):
+    async def test_execute_with_task_id(self, executor):
         """Test that execute passes task_id to shell runner"""
-        from unittest.mock import patch, MagicMock
+        from unittest.mock import patch
 
         # Mock the run_shell function to capture task_id
         captured_task_ids = []
 
-        original_run_shell = None
-        def mock_run_shell(cmd, workdir, conda_env=None, log_callback=None, task_id=""):
+        def mock_run_command(args, workdir, conda_env=None, log_callback=None, task_id=""):
             captured_task_ids.append(task_id)
             # Don't actually run anything
 
-        # Patch run_shell in the local executor module (imported symbol)
-        with patch('app.core.executor.local.run_shell', side_effect=mock_run_shell):
+        # Patch run_command in the local executor module (imported symbol)
+        with patch('app.core.executor.local.run_command', side_effect=mock_run_command):
+            workspace = _make_workspace_dir()
             spec = TaskSpec(
                 node_id="test-node",
                 tool_id="test-tool",
                 params={},
                 input_paths=[],
                 output_paths=[],
-                workspace_path=tmp_path,
+                workspace_path=workspace,
                 task_id="test-exec:test-node"
             )
 
@@ -81,7 +99,7 @@ class TestLocalExecutorIntegration:
     """Integration tests for LocalExecutor with ProcessRegistry"""
 
     @pytest.mark.asyncio
-    async def test_full_cancel_workflow(self, tmp_path):
+    async def test_full_cancel_workflow(self):
         """Test full workflow: register, execute, cancel"""
         import subprocess
         from app.core.executor.process_registry import process_registry
@@ -89,21 +107,25 @@ class TestLocalExecutorIntegration:
         # Create executor with a simple tool
         tools_registry = {
             "sleep-tool": {
+                "id": "sleep-tool",
+                "executionMode": "native",
                 "command": {"executable": sys.executable},
                 "ports": {"inputs": [], "outputs": []},
+                "parameters": {"code": {"type": "value", "flag": "-c"}},
+                "output": {"flagSupported": False},
             }
         }
         executor = LocalExecutor(tools_registry)
 
         # Execute a simple sleep command
+        workspace = _make_workspace_dir()
         spec = TaskSpec(
             node_id="sleep-node",
             tool_id="sleep-tool",
-            params={},
+            params={"code": "import time; time.sleep(10)"},
             input_paths=[],
             output_paths=[],
-            workspace_path=tmp_path,
-            cmd=f"{sys.executable} -c \"import time; time.sleep(10)\"",  # Use pre-built command for simplicity
+            workspace_path=workspace,
             task_id="test-exec:sleep-node"
         )
 

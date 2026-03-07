@@ -285,55 +285,6 @@ test.describe('Cross-Filtering', () => {
 })
 
 /**
- * Test Suite: HTML Viewer Integration
- */
-test.describe('HTML Viewer', () => {
-  test('should display PrSM HTML on feature selection', async ({ page }) => {
-    await page.goto(`${BASE_URL}/workflows/test-interactive`)
-
-    // Select a feature in FeatureMap
-    const featuremapNode = page.locator('.vue-flow__node[data-type="featuremap_viewer"]')
-    await featuremapNode.click()
-
-    // Click on a specific data point
-    const canvas = featuremapNode.locator('.plotly-canvas')
-    await canvas.click({ position: { x: 200, y: 200 }})
-
-    // Wait for HTML viewer to load content
-    await page.waitForTimeout(1000)
-
-    // Verify HTML viewer displays PrSM sequence
-    const htmlViewer = page.locator('.vue-flow__node[data-type="html_viewer"] iframe, .vue-flow__node[data-type="html_viewer"] .html-content')
-    await expect(htmlViewer).toBeVisible()
-
-    // Verify sequence content is loaded
-    const content = await htmlViewer.content()
-    expect(content).toContain(/sequence|ACDEFGHIK/i)
-  })
-
-  test('should update HTML when selection changes', async ({ page }) => {
-    await page.goto(`${BASE_URL}/workflows/test-interactive`)
-
-    const featuremapNode = page.locator('.vue-flow__node[data-type="featuremap_viewer"]')
-    const canvas = featuremapNode.locator('.plotly-canvas')
-    const htmlViewer = page.locator('.vue-flow__node[data-type="html_viewer"] iframe, .vue-flow__node[data-type="html_viewer"] .html-content')
-
-    // Select first feature
-    await canvas.click({ position: { x: 200, y: 200 }})
-    await page.waitForTimeout(500)
-    const firstContent = await htmlViewer.content()
-
-    // Select different feature
-    await canvas.click({ position: { x: 300, y: 300 }})
-    await page.waitForTimeout(500)
-    const secondContent = await htmlViewer.content()
-
-    // Verify content changed
-    expect(firstContent).not.toBe(secondContent)
-  })
-})
-
-/**
  * Test Suite: Error Handling
  */
 test.describe('Error Handling', () => {

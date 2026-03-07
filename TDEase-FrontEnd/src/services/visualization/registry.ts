@@ -14,7 +14,8 @@ export type VisualizationType =
   | 'volcano'      // Volcano plot for differential expression
   | 'spectrum'     // Mass spectrum visualization
   | 'table'        // Data table with AG-Grid
-  | 'html'         // HTML fragment viewer
+  | 'topmsv_ms2'   // TopMSV MS2 viewer
+  | 'topmsv_sequence' // TopMSV sequence viewer
 
 export interface VisualizationRegistration {
   type: VisualizationType
@@ -49,8 +50,11 @@ const SpectrumViewer = defineAsyncComponent(() =>
 const TableViewer = defineAsyncComponent(() => 
   import('@/components/visualization/TableViewer.vue')
 )
-const HtmlViewer = defineAsyncComponent(() =>
-  import('@/components/visualization/HtmlViewer.vue')
+const TopMSVMs2Viewer = defineAsyncComponent(() =>
+  import('@/components/visualization/TopMSVMs2Viewer.vue')
+)
+const TopMSVSequenceViewer = defineAsyncComponent(() =>
+  import('@/components/visualization/TopMSVSequenceViewer.vue')
 )
 
 // Register all built-in visualizations
@@ -149,19 +153,22 @@ const builtInVisualizations: VisualizationRegistration[] = [
     },
   },
   {
-    type: 'html',
-    label: 'HTML Viewer',
-    description: 'Isolated HTML fragment viewer for selected rows',
-    component: HtmlViewer,
+    type: 'topmsv_ms2',
+    label: 'TopMSV MS2 Viewer',
+    description: 'PrSM-driven MS2 peak viewer',
+    component: TopMSVMs2Viewer,
+    icon: 'Histogram',
+    category: 'scientific',
+    defaultConfig: {},
+  },
+  {
+    type: 'topmsv_sequence',
+    label: 'TopMSV Sequence Viewer',
+    description: 'Read-only proteoform sequence/modification viewer',
+    component: TopMSVSequenceViewer,
     icon: 'Document',
     category: 'scientific',
-    defaultConfig: {
-      htmlFileId: '',
-      sourceNodeId: '',
-      enableFullscreen: true,
-      enableExport: true,
-      sandboxEnabled: true,
-    },
+    defaultConfig: {},
   },
 ]
 

@@ -2,6 +2,7 @@ import { createApp } from "vue";
 import { createPinia } from 'pinia'
 import ElementPlus from 'element-plus'
 import 'element-plus/dist/index.css'
+import { ModuleRegistry, AllCommunityModule } from 'ag-grid-community'
 import App from "./App.vue";
 import router from "./router";
 import { createAPIClient } from './services/api/client'
@@ -11,6 +12,9 @@ import { useThemeStore } from './stores/theme'
 import '@/styles/catppuccin.css'
 import '@/styles/catppuccin-element-plus.css'
 import '@/styles/catppuccin-vueflow.css'
+
+// Required for AG Grid v34 modular architecture
+ModuleRegistry.registerModules([AllCommunityModule])
 
 const app = createApp(App)
 

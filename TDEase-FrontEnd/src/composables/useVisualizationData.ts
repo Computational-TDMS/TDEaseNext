@@ -62,6 +62,19 @@ export function useVisualizationData(
     return source.value.type === 'file' ? source.value.sourcePortId || null : null
   })
   const dataAddressNodeId = computed(() => sourceNodeId.value || nodeId.value)
+  const currentNode = computed(() => workflowStore.nodes.find((node) => node.id === nodeId.value) || null)
+  const visualizationType = computed(() => {
+    const node = currentNode.value as any
+    return (
+      node?.visualizationConfig?.type ||
+      node?.data?.visualizationConfig?.type ||
+      node?.data?.type ||
+      ''
+    )
+  })
+  const allowNonTabularFallback = computed(() => {
+    return visualizationType.value === 'topmsv_ms2' || visualizationType.value === 'topmsv_sequence'
+  })
 
   const rawData = computed<TableData | null>(() => {
     if (!effectiveExecutionId.value) return null
@@ -88,7 +101,7 @@ export function useVisualizationData(
   })
 
   async function resolveLatestExecutionId(): Promise<string | null> {
-    if (effectiveExecutionId.value) return effectiveExecutionId.value
+    if (providedExecutionId.value) return providedExecutionId.value
     if (!workflowId.value || !apiClient.value) return null
     try {
       const latest = await workspaceDataApi.getLatestExecution(apiClient.value, workflowId.value)
@@ -129,19 +142,44 @@ export function useVisualizationData(
 
   async function loadData(targetExecutionId?: string): Promise<TableData | null> {
     const resolvedExecutionId =
-      targetExecutionId ?? effectiveExecutionId.value ?? await resolveLatestExecutionId()
+      targetExecutionId ??
+      providedExecutionId.value ??
+      (await resolveLatestExecutionId())
     if (!resolvedExecutionId || !hasUpstreamConnection.value || !sourceNodeId.value) {
       return null
     }
 
     executionId.value = resolvedExecutionId
-    const loaded = await visualizationStore.loadNodeData(
+    let loaded = await visualizationStore.loadNodeData(
       nodeId.value,
       resolvedExecutionId,
       sourcePortId.value,
-      sourceNodeId.value
+      sourceNodeId.value,
+      { allowNonTabularFallback: allowNonTabularFallback.value }
     )
-    await fetchSchema(resolvedExecutionId)
+
+    if (!loaded && !providedExecutionId.value) {
+      const latestExecutionId = await resolveLatestExecutionId()
+      if (latestExecutionId && latestExecutionId !== resolvedExecutionId) {
+        executionId.value = latestExecutionId
+        loaded = await visualizationStore.loadNodeData(
+          nodeId.value,
+          latestExecutionId,
+          sourcePortId.value,
+          sourceNodeId.value,
+          { allowNonTabularFallback: allowNonTabularFallback.value }
+        )
+        await fetchSchema(latestExecutionId)
+        return loaded
+      }
+    }
+
+    if (!loaded) {
+      schema.value = []
+      return null
+    }
+
+    await fetchSchema(executionId.value || resolvedExecutionId)
     return loaded
   }
 

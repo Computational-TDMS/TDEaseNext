@@ -167,4 +167,9 @@ class FlowEngine:
         if failed:
             fn = self.graph.get_node(failed[0])
             err = fn.error_message if fn else "Unknown"
-        return {"status": status, "nodes": nodes, "error": err}
+        return {
+            "status": status,
+            "nodes": nodes,
+            "error": err,
+            "edge_metadata": self.graph.edges(),
+        }
