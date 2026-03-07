@@ -98,6 +98,10 @@
           "description": "Whether output directory flag is supported"
         }
       }
+    },
+    "selection_key_field": {
+      "type": "string",
+      "description": "Stable key column used for state/selection_ids propagation in interactive viewers"
     }
   },
   "definitions": {
@@ -141,6 +145,19 @@
         "pattern": {
           "type": "string",
           "description": "File pattern with placeholders"
+        },
+        "portKind": {
+          "type": "string",
+          "enum": [
+            "data",
+            "state-in",
+            "state-out"
+          ],
+          "description": "Port role for state/data routing"
+        },
+        "semanticType": {
+          "type": "string",
+          "description": "Semantic type for state payloads (for example: state/selection_ids)"
         }
       }
     },
@@ -212,6 +229,10 @@
         "description": {
           "type": "string",
           "description": "Output description"
+        },
+        "semanticType": {
+          "type": "string",
+          "description": "Semantic type for state payloads (for example: state/selection_ids)"
         },
         "schema": {
           "type": "array",
